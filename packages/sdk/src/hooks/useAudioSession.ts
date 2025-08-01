@@ -1,24 +1,34 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 
 export function useAudioSession(enabled: boolean) {
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setIsReady(false);
+      return;
+    }
 
     const initializeAudioSession = async () => {
       try {
-        // Create single AudioContext and analyser for entire session
+        // Create AudioContext and source for AudioWorklet
         streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioContextRef.current = new AudioContext();
-        analyserRef.current = audioContextRef.current.createAnalyser();
-        const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-        source.connect(analyserRef.current);
-        analyserRef.current.fftSize = 2048;
+        
+        // Create source node (needed for AudioWorklet)
+        sourceRef.current = audioContextRef.current.createMediaStreamSource(streamRef.current);
+        
+        console.log('Audio session initialized:', {
+          sampleRate: audioContextRef.current.sampleRate
+        });
+        
+        setIsReady(true);
       } catch (error) {
         console.error("Failed to initialize audio session:", error);
+        setIsReady(false);
         throw error;
       }
     };
@@ -26,6 +36,10 @@ export function useAudioSession(enabled: boolean) {
     initializeAudioSession();
 
     return () => {
+      // Cleanup in reverse order
+      if (sourceRef.current) {
+        sourceRef.current.disconnect();
+      }
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
@@ -33,17 +47,18 @@ export function useAudioSession(enabled: boolean) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
       
-      // Reset refs
+      // Reset refs and state
       streamRef.current = null;
       audioContextRef.current = null;
-      analyserRef.current = null;
+      sourceRef.current = null;
+      setIsReady(false);
     };
   }, [enabled]);
 
   return {
     stream: streamRef.current,
     audioContext: audioContextRef.current,
-    analyser: analyserRef.current,
-    isReady: streamRef.current && audioContextRef.current && analyserRef.current
+    source: sourceRef.current,
+    isReady
   };
 }

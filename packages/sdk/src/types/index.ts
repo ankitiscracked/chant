@@ -33,7 +33,41 @@ export interface ExecutionState {
   };
 }
 
+export interface ExecutionResult {
+  completed: boolean;
+  pausedAt?: number;
+  remainingActions?: Action[];
+  waitingForElement?: {
+    elementId: string;
+    label?: string;
+    reason: string;
+  };
+}
+
 export interface VADConfig {
   threshold: number;
   silenceDuration: number;
 }
+
+export interface VADOptions extends VADConfig {
+  useWorklet?: boolean;
+}
+
+export type VADStrategy = 'worklet';
+
+export interface VADCapabilities {
+  supportsWorklet: boolean;
+  supportsAnalyser: boolean;
+  recommended: VADStrategy;
+}
+
+export interface VoiceSegment {
+  startTime: number;
+  endTime: number;
+  duration: number;
+  confidence?: number;
+}
+
+// Re-export hook interfaces that are part of the public API
+export type { VoiceRecordingOptions } from '../hooks/useVoiceRecording';
+export type { AudioWorkletVADHook } from '../hooks/useAudioWorkletVAD';

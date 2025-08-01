@@ -1,25 +1,10 @@
-import type { Action, ExecutionState, VoiceElement } from '../types';
+import type { Action, ExecutionResult, VoiceElement } from '../types';
 
 export class ActionDispatcher {
   private elements: Map<string, VoiceElement>;
-  private executionState: ExecutionState;
-  private stateChangeCallback: ((state: ExecutionState) => void) | null = null;
 
-  constructor(
-    elements: Map<string, VoiceElement>,
-    executionState: ExecutionState,
-    stateChangeCallback: ((state: ExecutionState) => void) | null
-  ) {
+  constructor(elements: Map<string, VoiceElement>) {
     this.elements = elements;
-    this.executionState = executionState;
-    this.stateChangeCallback = stateChangeCallback;
-  }
-
-  private updateExecutionState(updates: Partial<ExecutionState>) {
-    this.executionState = { ...this.executionState, ...updates };
-    if (this.stateChangeCallback) {
-      this.stateChangeCallback(this.executionState);
-    }
   }
 
   private getElementRef(elementId: string): HTMLElement | null {
@@ -45,54 +30,35 @@ export class ActionDispatcher {
     return voiceElement?.label || elementId;
   }
 
-  resumeExecution() {
-    if (this.executionState.status === 'paused' && this.executionState.pendingActions.length > 0) {
-      this.updateExecutionState({ 
-        status: 'executing', 
-        waitingForElement: undefined 
-      });
-      this.executeActions(this.executionState.pendingActions);
-    }
-  }
-
-  async executeActions(actions: Action[]) {
+  async executeActions(actions: Action[]): Promise<ExecutionResult> {
     console.log("Executing actions:", actions);
-    this.updateExecutionState({ 
-      status: 'executing', 
-      currentActionIndex: 0, 
-      pendingActions: actions 
-    });
     
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
-      this.updateExecutionState({ currentActionIndex: i });
       
       try {
         console.log("Executing action:", action);
-        const shouldPause = await this.executeAction(action);
+        const pauseInfo = await this.executeAction(action);
         console.log("Action completed:", action);
         
-        if (shouldPause) {
+        if (pauseInfo) {
           const remainingActions = actions.slice(i + 1);
-          this.updateExecutionState({ 
-            status: 'paused', 
-            pendingActions: remainingActions 
-          });
-          return;
+          return {
+            completed: false,
+            pausedAt: i,
+            remainingActions,
+            waitingForElement: pauseInfo
+          };
         }
       } catch (error) {
         console.error(`Failed to execute action ${action.type}:`, error);
       }
     }
     
-    this.updateExecutionState({ 
-      status: 'completed', 
-      pendingActions: [],
-      waitingForElement: undefined 
-    });
+    return { completed: true };
   }
 
-  private async executeAction(action: Action): Promise<boolean> {
+  private async executeAction(action: Action): Promise<{elementId: string; label?: string; reason: string} | null> {
     const element = action.elementId
       ? this.getElementRef(action.elementId)
       : null;
@@ -131,14 +97,11 @@ export class ActionDispatcher {
           
           // Check if element is now valid or if there's a next required field
           if (input.hasAttribute('required') && !input.checkValidity()) {
-            this.updateExecutionState({
-              waitingForElement: {
-                elementId: action.elementId!,
-                label: this.getElementLabel(action.elementId!),
-                reason: input.validationMessage || 'Field validation failed'
-              }
-            });
-            return true; // Pause execution
+            return {
+              elementId: action.elementId!,
+              label: this.getElementLabel(action.elementId!),
+              reason: input.validationMessage || 'Field validation failed'
+            };
           }
           
           // Check for next required field
@@ -148,15 +111,12 @@ export class ActionDispatcher {
               .find(([_, el]) => el.ref?.current === nextRequired)?.[0];
             
             if (nextElementId) {
-              this.updateExecutionState({
-                waitingForElement: {
-                  elementId: nextElementId,
-                  label: this.getElementLabel(nextElementId),
-                  reason: 'Next required field needs input'
-                }
-              });
               nextRequired.focus();
-              return true; // Pause execution
+              return {
+                elementId: nextElementId,
+                label: this.getElementLabel(nextElementId),
+                reason: 'Next required field needs input'
+              };
             }
           }
         } else {
@@ -193,6 +153,6 @@ export class ActionDispatcher {
         console.warn(`Unknown action type: ${action.type}`);
     }
     
-    return false; // Don't pause execution
+    return null; // Don't pause execution
   }
 }

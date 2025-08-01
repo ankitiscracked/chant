@@ -9,8 +9,14 @@ export {
   useVoiceRecording, 
   useAudioSession, 
   useVoiceActivityDetection, 
-  useAudioProcessing 
+  useAudioProcessing,
+  useAudioWorkletVAD,
+  useVoiceElement,
+  useVoiceAction
 } from './hooks';
+
+// Audio utilities
+export { isAudioWorkletSupported, VAD_PROCESSOR_URL } from './audio';
 
 // Types
 export type { 
@@ -18,7 +24,13 @@ export type {
   ActionSchema, 
   Action, 
   ExecutionState, 
-  VADConfig 
+  VADConfig,
+  VADOptions,
+  VADStrategy,
+  VADCapabilities,
+  VoiceSegment,
+  VoiceRecordingOptions,
+  AudioWorkletVADHook
 } from './types';
 
 // Utilities and singleton instance

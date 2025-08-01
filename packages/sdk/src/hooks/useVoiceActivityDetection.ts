@@ -1,67 +1,87 @@
 import { useRef, useCallback } from "react";
-import type { VADConfig } from '../types';
+import type { VADOptions, VADCapabilities } from "../types";
+import { useAudioWorkletVAD } from "./useAudioWorkletVAD";
+import { isAudioWorkletSupported } from "../audio";
 
 export function useVoiceActivityDetection(
-  analyser: AnalyserNode | null,
-  config: VADConfig,
+  config: VADOptions,
   enabledRef: React.RefObject<boolean>
 ) {
   const vadStateRef = useRef({
     silenceStart: 0,
     isSpeaking: false,
     isActive: false,
-    cleanup: null as (() => void) | null
+    cleanup: null as (() => void) | null,
+    strategy: "worklet" as "worklet",
   });
 
-  const startVAD = useCallback((onSilenceDetected: () => void) => {
-    if (!analyser) return null;
+  // Initialize AudioWorklet VAD hook
+  const audioWorkletVAD = useAudioWorkletVAD(config);
 
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    vadStateRef.current.isActive = true;
+  /**
+   * Get VAD capabilities for current environment
+   */
+  const getCapabilities = useCallback((): VADCapabilities => {
+    const supportsWorklet = isAudioWorkletSupported();
 
-    const checkAudioLevel = () => {
-      if (!vadStateRef.current.isActive || !enabledRef.current) return;
-
-      analyser.getByteFrequencyData(dataArray);
-      const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
-
-      if (average > config.threshold) {
-        // Voice detected
-        if (!vadStateRef.current.isSpeaking) {
-          vadStateRef.current.isSpeaking = true;
-        }
-        vadStateRef.current.silenceStart = Date.now();
-      } else {
-        // Silence detected
-        if (
-          vadStateRef.current.isSpeaking &&
-          Date.now() - vadStateRef.current.silenceStart > config.silenceDuration
-        ) {
-          vadStateRef.current.isSpeaking = false;
-          onSilenceDetected();
-          return;
-        }
-      }
-
-      requestAnimationFrame(checkAudioLevel);
+    return {
+      supportsWorklet,
+      supportsAnalyser: false,
+      recommended: "worklet",
     };
-
-    checkAudioLevel();
-
-    const cleanup = () => {
-      vadStateRef.current.isActive = false;
-    };
-
-    vadStateRef.current.cleanup = cleanup;
-    return cleanup;
-  }, [analyser, config, enabledRef]);
-
-  const stopVAD = useCallback(() => {
-    if (vadStateRef.current.cleanup) {
-      vadStateRef.current.cleanup();
-      vadStateRef.current.cleanup = null;
-    }
   }, []);
 
-  return { startVAD, stopVAD };
+  /**
+   * Start VAD using AudioWorklet
+   */
+  const startVAD = useCallback(
+    (
+      onSilenceDetected: () => void,
+      audioContext?: AudioContext,
+      source?: MediaStreamAudioSourceNode
+    ) => {
+      const capabilities = getCapabilities();
+
+      console.log("capabilities:", capabilities);
+
+      if (!capabilities.supportsWorklet || !audioContext || !source) {
+        throw new Error(
+          "AudioWorklet is required but not supported or missing audio context/source"
+        );
+      }
+
+      console.log("Using AudioWorklet VAD strategy");
+      vadStateRef.current.strategy = "worklet";
+
+      // Use AudioWorklet VAD
+      return audioWorkletVAD.startWorkletVAD(
+        audioContext,
+        source,
+        () => {
+          // Voice start - update internal state
+          vadStateRef.current.isSpeaking = true;
+          console.log("voice start detected");
+        },
+        () => {
+          // Voice end
+          vadStateRef.current.isSpeaking = false;
+          console.log("voice end detected");
+          onSilenceDetected();
+        }
+      );
+    },
+    [config, getCapabilities, audioWorkletVAD]
+  );
+
+  const stopVAD = useCallback(() => {
+    audioWorkletVAD.stopWorkletVAD();
+    vadStateRef.current.isActive = false;
+  }, [audioWorkletVAD]);
+
+  return {
+    startVAD,
+    stopVAD,
+    getCapabilities,
+    currentStrategy: vadStateRef.current.strategy,
+  };
 }

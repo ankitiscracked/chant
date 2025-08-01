@@ -15,11 +15,7 @@ export class VoiceEngine {
   private dispatcher: ActionDispatcher;
 
   constructor() {
-    this.dispatcher = new ActionDispatcher(
-      this.elements,
-      this.executionState,
-      this.stateChangeCallback
-    );
+    this.dispatcher = new ActionDispatcher(this.elements);
   }
 
   // State management
@@ -36,6 +32,41 @@ export class VoiceEngine {
     this.executionState = { ...this.executionState, ...updates };
     if (this.stateChangeCallback) {
       this.stateChangeCallback(this.executionState);
+    }
+  }
+
+  resumeExecution() {
+    if (this.executionState.status === 'paused' && this.executionState.pendingActions.length > 0) {
+      this.updateExecutionState({ 
+        status: 'executing', 
+        waitingForElement: undefined 
+      });
+      this.executeActionsInternal(this.executionState.pendingActions);
+    }
+  }
+
+  private async executeActionsInternal(actions: Action[]) {
+    this.updateExecutionState({ 
+      status: 'executing', 
+      currentActionIndex: 0, 
+      pendingActions: actions 
+    });
+
+    const result = await this.dispatcher.executeActions(actions);
+    
+    if (result.completed) {
+      this.updateExecutionState({ 
+        status: 'completed', 
+        pendingActions: [],
+        waitingForElement: undefined 
+      });
+    } else {
+      this.updateExecutionState({ 
+        status: 'paused', 
+        currentActionIndex: result.pausedAt || 0,
+        pendingActions: result.remainingActions || [],
+        waitingForElement: result.waitingForElement
+      });
     }
   }
 
@@ -168,7 +199,7 @@ Supported action types: setValue, click, focus, wait, navigate
     if (this.executionState.status === 'paused') {
       const resumeCommands = ['continue', 'next', 'resume', 'proceed'];
       if (resumeCommands.some(cmd => transcript.toLowerCase().includes(cmd))) {
-        this.dispatcher.resumeExecution();
+        this.resumeExecution();
         return;
       }
     }
@@ -184,7 +215,7 @@ Supported action types: setValue, click, focus, wait, navigate
     try {
       const actions = await this.generateActions(actionId, transcript);
       console.log("Generated actions:", actions);
-      await this.dispatcher.executeActions(actions);
+      await this.executeActionsInternal(actions);
       console.log("Actions executed successfully");
     } catch (e) {
       console.error("Error handling transcript:", e);
