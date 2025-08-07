@@ -70,4 +70,3 @@ export interface VoiceSegment {
 
 // Re-export hook interfaces that are part of the public API
 export type { VoiceRecordingOptions } from '../hooks/useVoiceRecording';
-export type { AudioWorkletVADHook } from '../hooks/useAudioWorkletVAD';

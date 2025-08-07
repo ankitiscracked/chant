@@ -1,87 +1,125 @@
-import { useRef, useCallback } from "react";
-import type { VADOptions, VADCapabilities } from "../types";
-import { useAudioWorkletVAD } from "./useAudioWorkletVAD";
-import { isAudioWorkletSupported } from "../audio";
+import { useEffect, useRef } from "react";
+import {
+  DEFAULT_WORKLET_VAD_CONFIG,
+  VAD_PROCESSOR_URL,
+  isAudioWorkletSupported,
+} from "../audio";
+import type { VADCapabilities, VADConfig, VADOptions } from "../types";
 
-export function useVoiceActivityDetection(
-  config: VADOptions,
-  enabledRef: React.RefObject<boolean>
-) {
-  const vadStateRef = useRef({
-    silenceStart: 0,
-    isSpeaking: false,
-    isActive: false,
-    cleanup: null as (() => void) | null,
-    strategy: "worklet" as "worklet",
-  });
-
-  // Initialize AudioWorklet VAD hook
-  const audioWorkletVAD = useAudioWorkletVAD(config);
+export function useVoiceActivityDetection(config?: VADConfig) {
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+  const isModuleLoadedRef = useRef(false);
+  const isSupported = isAudioWorkletSupported();
 
   /**
-   * Get VAD capabilities for current environment
+   * Load AudioWorklet module if not already loaded
    */
-  const getCapabilities = useCallback((): VADCapabilities => {
-    const supportsWorklet = isAudioWorkletSupported();
+  const loadWorkletModule = async (
+    audioContext: AudioContext
+  ): Promise<boolean> => {
+    if (isModuleLoadedRef.current) return true;
 
-    return {
-      supportsWorklet,
-      supportsAnalyser: false,
-      recommended: "worklet",
-    };
-  }, []);
+    try {
+      await audioContext.audioWorklet.addModule(VAD_PROCESSOR_URL);
+      isModuleLoadedRef.current = true;
+      console.log("AudioWorklet VAD module loaded successfully");
+      return true;
+    } catch (error) {
+      console.error("Failed to load AudioWorklet VAD module:", error);
+      return false;
+    }
+  };
 
   /**
    * Start VAD using AudioWorklet
    */
-  const startVAD = useCallback(
-    (
-      onSilenceDetected: () => void,
-      audioContext?: AudioContext,
-      source?: MediaStreamAudioSourceNode
-    ) => {
-      const capabilities = getCapabilities();
+  const startVAD = async (
+    onSilenceDetected: (audioBuffer?: ArrayBuffer | null) => void,
+    audioContext?: AudioContext,
+    source?: MediaStreamAudioSourceNode
+  ) => {
+    if (!audioContext || !source) {
+      throw new Error(
+        "AudioWorklet is required but not supported or missing audio context/source"
+      );
+    }
 
-      console.log("capabilities:", capabilities);
+    if (!isSupported) {
+      console.warn("AudioWorklet not supported, cannot start worklet VAD");
+      return;
+    }
 
-      if (!capabilities.supportsWorklet || !audioContext || !source) {
-        throw new Error(
-          "AudioWorklet is required but not supported or missing audio context/source"
-        );
+    console.log("audio worklet started");
+
+    try {
+      // Ensure AudioContext is running
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+        console.log("AudioContext resumed");
       }
 
-      console.log("Using AudioWorklet VAD strategy");
-      vadStateRef.current.strategy = "worklet";
+      // Load worklet module
+      const moduleLoaded = await loadWorkletModule(audioContext);
+      if (!moduleLoaded) return;
 
-      // Use AudioWorklet VAD
-      return audioWorkletVAD.startWorkletVAD(
-        audioContext,
-        source,
-        () => {
-          // Voice start - update internal state
-          vadStateRef.current.isSpeaking = true;
-          console.log("voice start detected");
+      // Create AudioWorklet node with configuration
+      const workletNode = new AudioWorkletNode(audioContext, "vad-processor", {
+        processorOptions: {
+          threshold: config?.threshold ?? DEFAULT_WORKLET_VAD_CONFIG.threshold,
+          silenceDuration:
+            config?.silenceDuration ??
+            DEFAULT_WORKLET_VAD_CONFIG.silenceDuration,
         },
-        () => {
-          // Voice end
-          vadStateRef.current.isSpeaking = false;
-          console.log("voice end detected");
-          onSilenceDetected();
-        }
-      );
-    },
-    [config, getCapabilities, audioWorkletVAD]
-  );
+      });
 
-  const stopVAD = useCallback(() => {
-    audioWorkletVAD.stopWorkletVAD();
-    vadStateRef.current.isActive = false;
-  }, [audioWorkletVAD]);
+      // Set up message handling
+      workletNode.port.onmessage = (event) => {
+        console.log("audio worklet message received", event.data);
+        const { type, timestamp, ...data } = event.data;
+
+        switch (type) {
+          case "voice_start":
+            console.log("AudioWorklet: Voice detected", {
+              timestamp,
+              ...data,
+            });
+            break;
+          case "voice_end":
+            console.log("AudioWorklet: Voice ended", { timestamp, ...data });
+            // Pass the audioBuffer from the VAD processor
+            onSilenceDetected(data.audioBuffer);
+            break;
+          default:
+            console.warn("Unknown AudioWorklet message type:", type);
+        }
+      };
+
+      // Connect audio pipeline
+      source.connect(workletNode);
+      // Note: We don't connect workletNode to destination to avoid audio playback
+
+      workletNodeRef.current = workletNode;
+    } catch (error) {
+      console.error("Failed to start AudioWorklet VAD:", error);
+    }
+  };
+
+  const stopVAD = () => {
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopVAD();
+    };
+  }, []);
 
   return {
     startVAD,
     stopVAD,
-    getCapabilities,
-    currentStrategy: vadStateRef.current.strategy,
   };
 }

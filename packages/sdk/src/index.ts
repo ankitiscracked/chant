@@ -10,7 +10,6 @@ export {
   useAudioSession, 
   useVoiceActivityDetection, 
   useAudioProcessing,
-  useAudioWorkletVAD,
   useVoiceElement,
   useVoiceAction
 } from './hooks';
@@ -29,8 +28,7 @@ export type {
   VADStrategy,
   VADCapabilities,
   VoiceSegment,
-  VoiceRecordingOptions,
-  AudioWorkletVADHook
+  VoiceRecordingOptions
 } from './types';
 
 // Utilities and singleton instance

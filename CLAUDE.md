@@ -1,0 +1,2 @@
+- Use bun for package management
+- don't use React.memo, useMemo and useCallback as we are already using React Compiler

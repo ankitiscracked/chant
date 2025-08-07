@@ -3,16 +3,16 @@
  */
 
 // AudioWorklet processor URL - will be resolved by bundler
-export const VAD_PROCESSOR_URL = new URL('./vad-processor.js', import.meta.url);
+export const VAD_PROCESSOR_URL = new URL("./vad-processor.js", import.meta.url);
 
 /**
  * Check if AudioWorklet is supported in current environment
  */
 export function isAudioWorkletSupported(): boolean {
   return (
-    typeof AudioWorklet !== 'undefined' &&
-    typeof AudioContext !== 'undefined' &&
-    'audioWorklet' in AudioContext.prototype
+    typeof AudioWorklet !== "undefined" &&
+    typeof AudioContext !== "undefined" &&
+    "audioWorklet" in AudioContext.prototype
   );
 }
 
@@ -28,6 +28,6 @@ export interface AudioWorkletVADConfig {
  * Default AudioWorklet VAD configuration
  */
 export const DEFAULT_WORKLET_VAD_CONFIG: AudioWorkletVADConfig = {
-  threshold: 0.01, // RMS threshold for voice detection
+  threshold: 0.1, // RMS threshold for voice detection
   silenceDuration: 1500, // ms of silence before ending voice segment
 };

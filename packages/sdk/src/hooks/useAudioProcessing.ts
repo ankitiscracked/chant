@@ -14,7 +14,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 export function useAudioProcessing() {
   const [transcript, setTranscript] = useState("");
 
-  const processAudioChunk = useCallback(async (audioBlob: Blob) => {
+  const processAudioChunk = async (audioBlob: Blob) => {
     console.log("processing audio chunk");
     if (audioBlob.size === 0) return;
 
@@ -31,7 +31,7 @@ export function useAudioProcessing() {
       setTranscript("Error: Could not transcribe audio");
       setTimeout(() => setTranscript(""), 2000);
     }
-  }, []);
+  };
 
   return {
     transcript,
