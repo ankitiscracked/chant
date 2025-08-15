@@ -1,17 +1,26 @@
-import { useEffect, useRef } from 'react';
-import { voiceEngine } from '../utils';
-import type { VoiceElement } from '../types';
+import { useEffect, useRef } from "react";
+import { nanoid } from "nanoid";
+import { voiceEngine } from "../utils";
+import type { ActionElement } from "../types";
 
-export function useVoiceElement(id: string, element: Omit<VoiceElement, 'id' | 'ref'>) {
+export function useVoiceElement(
+  actionId: string,
+  element: Omit<ActionElement, "id" | "ref">
+) {
   const ref = useRef<HTMLElement>(null);
+  const elementId = useRef(nanoid()).current;
 
   useEffect(() => {
-    voiceEngine.registerElement(id, {
+    voiceEngine.registerElement(actionId, {
       ...element,
-      id,
-      ref
+      id: elementId,
+      ref,
     });
-  }, [id, element.selector, element.type, element.label, element.order, element.value]);
+
+    return () => {
+      voiceEngine.unregisterElement(actionId, { id: elementId });
+    };
+  }, []);
 
   return ref;
 }

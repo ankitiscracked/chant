@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { VoiceListener, useVoiceElement, useVoiceAction } from "chant-sdk";
+import { useVoiceElement } from "chant-sdk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LOGIN_ACTION_ID } from "@/lib/utils";
 
 interface LoginFormProps {
   onLogin: (email: string, password: string) => void;
@@ -11,32 +12,22 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const emailRef = useVoiceElement("email-input", {
+  const emailRef = useVoiceElement(LOGIN_ACTION_ID, {
     selector: "#email-input",
     type: "input",
     label: "Email input field",
   });
 
-  const passwordRef = useVoiceElement("password-input", {
+  const passwordRef = useVoiceElement(LOGIN_ACTION_ID, {
     selector: "#password-input",
     type: "input",
     label: "Password input field",
   });
 
-  const loginButtonRef = useVoiceElement("login-button", {
+  const loginButtonRef = useVoiceElement(LOGIN_ACTION_ID, {
     selector: "#login-button",
     type: "button",
     label: "Login button",
-  });
-
-  useVoiceAction("login", {
-    voice_triggers: ["log in", "login", "sign in", "authenticate"],
-    description: "Login with email and password",
-    steps: [
-      "Enter email in the email input field",
-      "Enter password in the password input field",
-      "Click the login button",
-    ],
   });
 
   const handleLogin = () => {
@@ -86,7 +77,10 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                 minLength={6}
                 value={password}
                 onChange={(e) => {
-                  console.log("running in password change event", e.target.value);
+                  console.log(
+                    "running in password change event",
+                    e.target.value
+                  );
                   setPassword(e.target.value);
                 }}
                 placeholder="Enter your password"
@@ -102,7 +96,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
             </Button>
           </form>
         </div>
-        <VoiceListener />
       </div>
     </div>
   );

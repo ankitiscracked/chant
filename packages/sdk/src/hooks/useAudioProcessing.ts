@@ -20,12 +20,7 @@ export function useAudioProcessing() {
 
     const audioBase64 = await blobToBase64(audioBlob);
     try {
-      const transcript = await voiceEngine.transcribeAudio(audioBase64);
-      if (transcript.trim()) {
-        setTranscript(transcript);
-        await voiceEngine.handleTranscript(transcript);
-        setTranscript("");
-      }
+      await voiceEngine.handleAudio((audioBase64));
     } catch (error) {
       console.error("Transcription failed:", error);
       setTranscript("Error: Could not transcribe audio");

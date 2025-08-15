@@ -1,2 +1,3 @@
 - Use bun for package management
 - don't use React.memo, useMemo and useCallback as we are already using React Compiler
+- don't run any typecheck or build commands after finishing with the code changes

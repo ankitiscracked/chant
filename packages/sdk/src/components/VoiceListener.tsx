@@ -1,218 +1,586 @@
 import { useEffect, useState } from "react";
 import { useVoiceRecording } from "../hooks";
+import { useVoiceState } from "../hooks/useVoiceState";
+import { useUserInfoDisplay } from "../hooks";
+import { useActionSuccessFlow } from "../hooks/useActionSuccessFlow";
 import { voiceEngine } from "../utils";
-import type { ExecutionState } from "../types";
+import { UserInfoDisplay } from "./UserInfoDisplay";
+import { ActionSuccessDialog } from "./ActionSuccessDialog";
+import { ActionTriggerSuggestions } from "./ActionTriggerSuggestions";
 
-// Icons as React components
-const CrystalIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+// Icon components
+const WaveformIcon = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <path
-      d="M12 2L3 7V17L12 22L21 17V7L12 2Z"
+      d="M12 3V21M8 6V18M16 6V18M4 10V14M20 10V14"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+export const ListeningIcon = () => (
+  <svg viewBox="0 0 64 64" width="40" height="40">
+    <path
+      id="wave"
+      d="M 0 32 Q 8 28, 16 32 T 32 32 T 48 32 T 64 32"
+      stroke="#4CAF50"
+      strokeWidth="2"
+      fill="none"
+    >
+      <animate
+        attributeName="d"
+        dur={"1.2s"}
+        repeatCount="indefinite"
+        values="
+          M 0 32 Q 8 28, 16 32 T 32 32 T 48 32 T 64 32;
+          M 0 32 Q 8 24, 16 32 T 32 40 T 48 24 T 64 32;
+          M 0 32 Q 8 28, 16 32 T 32 32 T 48 32 T 64 32"
+      />
+    </path>
+  </svg>
+);
+
+// Recording: Pulsing red dot
+const RecordingIcon = () => (
+  <svg viewBox="0 0 64 64" width="40" height="40">
+    <circle cx="32" cy="32" r="10" fill="#F44336">
+      <animate
+        attributeName="r"
+        values="10;14;10"
+        dur={"1.2s"}
+        repeatCount="indefinite"
+      />
+    </circle>
+  </svg>
+);
+
+// Analysing: Hovering magnifying glass
+export const AnalysingIcon = () => (
+  <svg viewBox="0 0 64 64" width="40" height="40">
+    <g>
+      <circle
+        cx="28"
+        cy="28"
+        r="10"
+        stroke="#2196F3"
+        strokeWidth="2"
+        fill="none"
+      />
+      <line x1="35" y1="35" x2="44" y2="44" stroke="#2196F3" strokeWidth="2" />
+      <animateTransform
+        attributeName="transform"
+        type="translate"
+        values="0 0; 0 -2; 0 0; 0 2; 0 0"
+        dur="2s"
+        repeatCount="indefinite"
+      />
+    </g>
+  </svg>
+);
+
+// Executing: Tiny line through maze
+export const PlanningIcon = () => (
+  <svg viewBox="0 0 64 64" width="40" height="40">
+    {/* Chip outline */}
+    <rect
+      x="12"
+      y="12"
+      width="40"
+      height="40"
+      stroke="#9C27B0"
+      strokeWidth="2"
+      fill="none"
+    />
+    {/* Simple "tracks" */}
+    <path
+      d="M16 16 H48 V48 H16 V32 H32 V48"
+      stroke="#9C27B0"
+      strokeWidth="2"
+      fill="none"
+    />
+    {/* Moving dot along the path */}
+    <circle r="2" fill="#9C27B0">
+      <animateMotion
+        dur="2s"
+        repeatCount="indefinite"
+        path="M16 16 H48 V48 H16 V32 H32 V48"
+      />
+    </circle>
+  </svg>
+);
+
+// Executing: Shifting arrow
+const ExecutingIcon = () => (
+  <svg viewBox="0 0 64 64" width="40" height="40">
+    <polygon points="20,16 44,32 20,48" fill="#9C27B0">
+      <animate
+        attributeName="points"
+        values="
+          20,16 44,32 20,48;
+          24,16 48,32 24,48;
+          20,16 44,32 20,48"
+        dur={"1.2s"}
+        repeatCount="indefinite"
+      />
+    </polygon>
+  </svg>
+);
+
+const PauseIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"
+      stroke="currentColor"
+      strokeWidth="2"
+    />
+    <path
+      d="M10 15V9"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      fill="currentColor"
-      opacity="0.8"
-    />
-  </svg>
-);
-
-const MicIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path
-      d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z"
-      fill="currentColor"
     />
     <path
-      d="M19 10V12C19 16.42 15.42 20 11 20H13C17.42 20 21 16.42 21 12V10H19Z"
-      fill="currentColor"
+      d="M14 15V9"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
-    <path d="M7 23H17V21H7V23Z" fill="currentColor" />
   </svg>
 );
 
-const WaitIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-    <path d="M12 6V12L16 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+const CompletedIcon = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"
+      stroke="currentColor"
+      strokeWidth="2"
+    />
+    <path
+      d="M9 12L11 14L15 10"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
-// Animated components
-const Waveform = () => (
-  <div className="flex items-center space-x-1">
-    {[...Array(4)].map((_, i) => (
-      <div
-        key={i}
-        className="w-1 bg-current rounded-full animate-pulse"
-        style={{
-          height: '12px',
-          animationDelay: `${i * 0.1}s`,
-          animationDuration: '1.2s'
-        }}
-      />
-    ))}
-  </div>
-);
-
-const StepsDots = () => (
-  <div className="flex items-center justify-center space-x-1 mt-2">
-    {[...Array(3)].map((_, i) => (
-      <div
-        key={i}
-        className="w-2 h-2 bg-current rounded-full opacity-50"
-        style={{
-          animation: `bounce 1.4s ease-in-out ${i * 0.16}s infinite both`
-        }}
-      />
-    ))}
-  </div>
-);
+interface StateConfig {
+  icon: React.ReactNode;
+  label: string;
+  className: string;
+}
 
 export function VoiceListener() {
-  const [executionState, setExecutionState] = useState<ExecutionState>(
-    voiceEngine.getExecutionState()
-  );
+  const [hasActions, setHasActions] = useState(true);
+  const [currentRoute, setCurrentRoute] = useState(window.location.pathname);
+  const [showNoMatchWarning, setShowNoMatchWarning] = useState(false);
+  const [showNoElementsWarning, setShowNoElementsWarning] = useState(false);
+  const [lastTranscript, setLastTranscript] = useState("");
 
-  // Use custom hook for all voice recording logic
+  const { executionState, voiceListenerState, isPaused, isCompleted } =
+    useVoiceState();
   const { enabled, transcript, start, stop } = useVoiceRecording();
+  const { displayData, isVisible, dismiss } = useUserInfoDisplay();
+  
+  const [successFlowState, successFlowActions] = useActionSuccessFlow();
 
+  // Handle action completion - show success dialog instead of auto-reset
   useEffect(() => {
-    const unsubscribe = voiceEngine.onExecutionStateChange(setExecutionState);
-    return unsubscribe;
+    const handleActionsCompleted = (event: CustomEvent) => {
+      const { actions } = event.detail;
+      if (executionState.actionId) {
+        const action = voiceEngine.getActions().get(executionState.actionId);
+        if (action) {
+          successFlowActions.handleActionCompleted(
+            executionState.actionId,
+            action.description,
+            voiceListenerState.transcript,
+            actions
+          );
+        }
+      }
+    };
+
+    voiceEngine.addEventListener("actionsCompleted", handleActionsCompleted);
+
+    if (isCompleted) {
+      // Reset to idle state
+      voiceEngine.updateExecutionState({ status: "idle" });
+      voiceEngine.updateVoiceListenerState({
+        status: "listening",
+        transcript: "",
+      });
+    }
+
+    return () => {
+      voiceEngine.removeEventListener("actionsCompleted", handleActionsCompleted);
+    };
+  }, [isCompleted, executionState.actionId, voiceListenerState.transcript, successFlowActions]);
+
+  // Listen for warning events from voice engine
+  useEffect(() => {
+    const handleNoMatchWarning = (event: CustomEvent) => {
+      setLastTranscript(event.detail.transcript || "");
+      setShowNoMatchWarning(true);
+      setTimeout(() => setShowNoMatchWarning(false), 4000);
+    };
+
+    const handleNoElementsWarning = (event: CustomEvent) => {
+      setShowNoElementsWarning(true);
+      setTimeout(() => setShowNoElementsWarning(false), 4000);
+    };
+
+    voiceEngine.addEventListener("noMatchWarning", handleNoMatchWarning);
+    voiceEngine.addEventListener("noElementsWarning", handleNoElementsWarning);
+
+    return () => {
+      voiceEngine.removeEventListener("noMatchWarning", handleNoMatchWarning);
+      voiceEngine.removeEventListener("noElementsWarning", handleNoElementsWarning);
+    };
   }, []);
 
-  const getStateInfo = () => {
-    if (!enabled) {
+  // Listen for action retry events
+  useEffect(() => {
+    const handleActionRetry = (event: CustomEvent) => {
+      const { suggestedTrigger } = event.detail;
+      // Simulate voice command with the suggested trigger
+      voiceEngine.handleTranscript(suggestedTrigger);
+    };
+
+    window.addEventListener("actionRetry", handleActionRetry as EventListener);
+
+    return () => {
+      window.removeEventListener("actionRetry", handleActionRetry as EventListener);
+    };
+  }, []);
+
+  // Track route changes and update voice engine
+  useEffect(() => {
+    const updateRoute = () => {
+      const newRoute = window.location.pathname;
+      setCurrentRoute(newRoute);
+      voiceEngine.setCurrentRoute(newRoute);
+      setHasActions(voiceEngine.hasActionsForCurrentRoute());
+    };
+
+    updateRoute();
+    window.addEventListener("popstate", updateRoute);
+
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+
+    history.pushState = function (...args) {
+      originalPushState.apply(history, args);
+      setTimeout(updateRoute, 0);
+    };
+
+    history.replaceState = function (...args) {
+      originalReplaceState.apply(history, args);
+      setTimeout(updateRoute, 0);
+    };
+
+    return () => {
+      window.removeEventListener("popstate", updateRoute);
+      history.pushState = originalPushState;
+      history.replaceState = originalReplaceState;
+    };
+  }, []);
+
+  useEffect(() => {
+    const checkActions = () =>
+      setHasActions(voiceEngine.hasActionsForCurrentRoute());
+    const interval = setInterval(checkActions, 1000);
+    return () => clearInterval(interval);
+  }, [currentRoute]);
+
+  // Determine current state and config
+  const getStateConfig = (): StateConfig => {
+    const isIdle = !enabled;
+
+    if (isIdle) {
       return {
-        bg: 'bg-slate-100 hover:bg-slate-200',
-        text: 'text-slate-700',
-        icon: <CrystalIcon />,
-        label: 'Click to activate'
+        icon: <WaveformIcon />,
+        label: "Activate voice command",
+        className:
+          "bg-secondary text-secondary-foreground border-border hover:bg-secondary/80",
       };
     }
 
-    if (executionState.status === "paused" && executionState.waitingForElement) {
-      return {
-        bg: 'bg-amber-100 border-amber-300',
-        text: 'text-amber-800',
-        icon: <WaitIcon />,
-        label: 'Waiting for input'
-      };
-    }
-
+    // Check execution states first
     if (executionState.status === "executing") {
       return {
-        bg: 'bg-blue-100 border-blue-300',
-        text: 'text-blue-800',
-        icon: <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" />,
-        label: 'Executing'
+        icon: <ExecutingIcon />,
+        label: "Executing",
+        className: "",
       };
     }
 
-    return {
-      bg: 'bg-green-100 border-green-300',
-      text: 'text-green-800',
-      icon: <MicIcon />,
-      label: 'Listening'
-    };
+    if (executionState.status === "paused") {
+      return {
+        icon: <PauseIcon />,
+        label: "Paused",
+        className: "bg-yellow-500 text-yellow-50 border-yellow-500",
+      };
+    }
+
+    if (executionState.status === "completed") {
+      return {
+        icon: <CompletedIcon />,
+        label: "Completed",
+        className: "",
+      };
+    }
+
+    // Check voice listener states
+    switch (voiceListenerState.status) {
+      case "listening":
+        return {
+          icon: <ListeningIcon />,
+          label: "Listening...",
+          className: "",
+        };
+      case "speaking":
+        return {
+          icon: <RecordingIcon />,
+          label: "Speaking...",
+          className: "",
+        };
+      case "analyzing":
+        return {
+          icon: <AnalysingIcon />,
+          label: "Analyzing...",
+          className: "",
+        };
+      case "planning":
+        return {
+          icon: <PlanningIcon />,
+          label: "Planning...",
+          className: "",
+        };
+      default:
+        return {
+          icon: <ListeningIcon />,
+          label: "Listening...",
+          className: "",
+        };
+    }
   };
 
-  const stateInfo = getStateInfo();
-  const isExpanded = enabled && (executionState.status === "executing" || (executionState.status === "paused" && executionState.waitingForElement));
+  const stateConfig = getStateConfig();
+  const isIdle = !enabled;
+  console.log("voice listener state", voiceListenerState);
+
+  // Function to get available triggers for current action
+  const getAvailableTriggersForAction = (actionId: string): string[] => {
+    const action = voiceEngine.getActions().get(actionId);
+    return action?.voice_triggers || [];
+  };
+
+  // Check if we have additional info to show
+  const hasTranscript = transcript || voiceListenerState.transcript;
+  const hasPauseInfo = isPaused && executionState.waitingForElement;
+  const hasNoActions = !hasActions;
+  const hasWarnings = showNoMatchWarning || showNoElementsWarning;
+  const hasUserInfo = isVisible && displayData;
+  const hasAdditionalInfo = hasTranscript || hasPauseInfo || hasNoActions || hasWarnings || hasUserInfo;
 
   return (
     <div className="fixed bottom-6 right-6 z-50">
-      <style>{`
-        @keyframes bounce {
-          0%, 80%, 100% { 
-            transform: scale(0);
-          } 40% { 
-            transform: scale(1);
-          }
-        }
-      `}</style>
-
-      <div
-        className={`
-          group relative cursor-pointer
-          ${stateInfo.bg} ${stateInfo.text}
-          border border-opacity-20 shadow-lg hover:shadow-xl
-          ${!enabled ? 'w-12 h-12 hover:px-4 hover:py-3 rounded-full hover:w-full hover:rounded-2xl' :
-            isExpanded ? 'rounded-2xl px-6 py-4 min-w-[280px]' :
-              'rounded-full px-4 py-3'
-          }
-        `}
-        onClick={!enabled ? start : undefined}
-      >
-        {!enabled ? (
-          <div className="flex h-full items-center justify-center group-hover:space-x-2">
-            <div className="flex-shrink-0">
-              {stateInfo.icon}
-            </div>
-            <span className="text-sm font-medium hidden group-hover:block">
-              {stateInfo.label}
-            </span>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                {executionState.status === "executing" ? (
-                  stateInfo.icon
-                ) : enabled && executionState.status !== "paused" ? (
-                  <Waveform />
-                ) : (
-                  stateInfo.icon
-                )}
-                <div>
-                  <div className="text-sm font-semibold">
-                    {stateInfo.label}
-                  </div>
-                  {transcript && (
-                    <div className="text-xs opacity-75 mt-1 max-w-[200px] truncate">
-                      "{transcript}"
-                    </div>
-                  )}
-                </div>
+      {/* Additional info above the main button */}
+      {!isIdle && hasAdditionalInfo && (
+        <div className="mb-3 bg-card text-card-foreground border border-border rounded-lg p-3 max-w-xs shadow-lg max-h-96 overflow-y-auto">
+          {hasTranscript && (
+            <div className="mb-2">
+              <div className="text-xs font-medium text-muted-foreground mb-1">
+                Transcript
               </div>
+              <div className="text-sm">"{hasTranscript}"</div>
+            </div>
+          )}
 
-              <button
-                onClick={stop}
-                className="flex-shrink-0 w-8 h-8 bg-red-500 hover:bg-red-600 text-white text-xs rounded-full flex items-center justify-center transition-colors font-medium"
+          {hasPauseInfo && (
+            <div className="mb-2">
+              <div className="text-xs font-medium text-muted-foreground mb-1">
+                Waiting for input
+              </div>
+              <div className="text-sm font-medium">
+                {executionState.waitingForElement?.label}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {executionState.waitingForElement?.reason}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Say "continue" or "next" when ready
+              </div>
+            </div>
+          )}
+
+          {hasNoActions && (
+            <div>
+              <div className="text-xs font-medium text-muted-foreground mb-1">
+                No actions available
+              </div>
+              <div className="text-sm">
+                No voice actions registered for this route
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Current route: {currentRoute}
+              </div>
+            </div>
+          )}
+
+          {showNoMatchWarning && (
+            <div>
+              <div className="text-xs font-medium text-red-500 mb-1">
+                Voice command not recognized
+              </div>
+              <div className="text-sm">
+                "{lastTranscript}"
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                No matching action found for this command
+              </div>
+            </div>
+          )}
+
+          {showNoElementsWarning && (
+            <div className="mb-2">
+              <div className="text-xs font-medium text-yellow-600 mb-1">
+                No interactive elements
+              </div>
+              <div className="text-sm">
+                Action matched but no elements registered
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                Please ensure UI elements are properly registered
+              </div>
+            </div>
+          )}
+
+          {hasUserInfo && (
+            <UserInfoDisplay displayData={displayData} onDismiss={dismiss} />
+          )}
+        </div>
+      )}
+
+      {/* Main state button */}
+      <div className="flex flex-col items-center gap-1">
+        <div
+          className={`
+    group bg-white cursor-pointer shadow-lg hover:shadow-xl
+    flex items-center overflow-hidden
+    transition-[width,border-radius,padding,box-shadow]
+    ${isIdle ? "duration-150 ease-out" : "duration-200 ease-in-out"}
+    ${isIdle
+              ? "w-12 hover:w-max h-12 rounded-full hover:rounded-2xl px-0 hover:px-3 py-0 justify-center hover:justify-start"
+              : "w-max h-12 rounded-2xl px-4 py-3 space-x-3"
+            }
+    ${stateConfig.className}
+  `}
+          onClick={isIdle ? start : undefined}
+        >
+          <div className="flex-shrink-0">{stateConfig.icon}</div>
+
+          {/* Label fades in */}
+          <span
+            className={`
+      text-sm font-medium whitespace-nowrap
+      transition-opacity
+      ${isIdle ? "duration-150 ease-out" : "duration-200 ease-in-out"}
+      ${isIdle
+                ? "w-0 opacity-0 group-hover:opacity-100 group-hover:w-auto"
+                : "w-auto opacity-100"
+              }
+    `}
+          >
+            {stateConfig.label}
+          </span>
+
+          {/* Stop button only visible in listening state */}
+          {voiceListenerState.status === "listening" && (
+            <button
+              onClick={stop}
+              className="
+        cursor-pointer flex-shrink-0 w-6 h-6 bg-gray-800 text-white 
+        rounded-full flex items-center justify-center
+        transition-colors duration-200 ease-in-out
+      "
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
               >
-                ✕
-              </button>
-            </div>
-
-            {isExpanded && (
-              <div className="pt-2 border-t border-current border-opacity-20">
-                {executionState.status === "paused" && executionState.waitingForElement && (
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">
-                      {executionState.waitingForElement.label}
-                    </div>
-                    <div className="text-xs opacity-75">
-                      {executionState.waitingForElement.reason}
-                    </div>
-                    <div className="text-xs opacity-60">
-                      Say "continue" or "next" when ready
-                    </div>
-                  </div>
-                )}
-
-                {executionState.status === "executing" && (
-                  <div className="text-center">
-                    <div className="text-xs opacity-75 mb-2">Processing your request...</div>
-                    <StepsDots />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                <path
+                  d="M18 6L6 18M6 6L18 18"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
+        <a
+          className="text-[11px] text-gray-300"
+          href="https://www.google.com"
+          target="_blank"
+        >
+          Powered by Chant
+        </a>
       </div>
+
+      {/* Success confirmation dialog */}
+      <ActionSuccessDialog
+        isVisible={successFlowState.showSuccessDialog}
+        actionId={successFlowState.currentActionId || ''}
+        actionDescription={successFlowState.currentActionDescription}
+        transcript={successFlowState.currentTranscript}
+        onSuccess={successFlowActions.handleSuccess}
+        onFailure={() => {
+          const triggers = successFlowState.currentActionId 
+            ? getAvailableTriggersForAction(successFlowState.currentActionId)
+            : [];
+          successFlowActions.handleFailure(triggers);
+        }}
+        onDismiss={successFlowActions.dismissDialogs}
+      />
+
+      {/* Action trigger suggestions */}
+      <ActionTriggerSuggestions
+        isVisible={successFlowState.showTriggerSuggestions}
+        actionId={successFlowState.currentActionId || ''}
+        actionDescription={successFlowState.currentActionDescription}
+        availableTriggers={successFlowState.availableTriggers}
+        onRetry={successFlowActions.handleRetry}
+        onDismiss={successFlowActions.dismissDialogs}
+      />
     </div>
   );
 }

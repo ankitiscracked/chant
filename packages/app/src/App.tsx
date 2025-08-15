@@ -1,19 +1,136 @@
-import { useState, useEffect } from "react";
-import { Router, Route } from "wouter";
-import "./App.css";
-import { LoginForm } from "@/components/LoginForm";
 import { AppLayout } from "@/components/AppLayout";
 import { Example1 } from "@/components/Example1";
 import { Example2 } from "@/components/Example2";
+import { LoginForm } from "@/components/LoginForm";
+import { VoiceListener, type Action, type ExecFunctionResult, voiceEngine } from "chant-sdk";
+import { useEffect, useState } from "react";
+import { Route, Router } from "wouter";
+import { useVoiceActions } from "chant-sdk";
+import { CREATE_SUPPORT_TICKET_ACTION_ID, LOGIN_ACTION_ID, ADD_TO_CART_ACTION_ID, SHOW_ALL_ACTIONS_ID, SHOW_PAGE_ACTIONS_ID } from "./lib/utils";
+
+// Centralized voice actions configuration
+const VOICE_ACTIONS: Action[] = [
+  {
+    actionId: LOGIN_ACTION_ID,
+    voice_triggers: ["log in", "login", "sign in", "authenticate"],
+    description: "Login with email and password",
+    steps: [
+      "Enter email in the email input field",
+      "Enter password in the password input field",
+      "Click the login button",
+    ],
+    route: "/",
+    pauseOnRequiredField: false,
+  },
+  {
+    actionId: CREATE_SUPPORT_TICKET_ACTION_ID,
+    voice_triggers: [
+      "create ticket",
+      "new ticket",
+      "add ticket",
+      "open ticket",
+      "create support ticket",
+    ],
+    description: "Create a new support ticket",
+    steps: [
+      "Click the create ticket button",
+      "Enter ticket title",
+      "Enter ticket description",
+      "Select priority if needed",
+      "Submit the ticket",
+    ],
+    route: "/example2",
+    pauseOnRequiredField: false,
+  },
+  {
+    actionId: ADD_TO_CART_ACTION_ID,
+    voice_triggers: [
+      "add to cart",
+      "buy",
+      "purchase",
+      "add item",
+      "shop for",
+      "get",
+    ],
+    description: "Add a product to cart by name or description",
+    steps: [
+      "Find the product that matches the spoken name or description",
+      "Click the 'Add to Cart' button for that product",
+    ],
+    route: "/example1",
+    pauseOnRequiredField: false,
+  },
+  {
+    actionId: SHOW_ALL_ACTIONS_ID,
+    voice_triggers: [
+      "show all actions",
+      "list all actions",
+      "what actions are available",
+      "show me all commands",
+      "list commands",
+    ],
+    description: "Show all available voice actions across the app",
+    execFunction: (): ExecFunctionResult => {
+      const allActions = voiceEngine.getActions();
+      const actionList = Array.from(allActions.values()).map(action => ({
+        id: action.actionId,
+        description: action.description,
+        triggers: action.voice_triggers,
+        route: action.route || "Global",
+      }));
+
+      return {
+        resultText: `Found ${actionList.length} actions available`,
+        userInfo: actionList.map(action => 
+          `${action.description} (${action.route}) - Triggers: "${action.triggers.join('", "')}"`
+        ),
+        error: "",
+      };
+    },
+  },
+  {
+    actionId: SHOW_PAGE_ACTIONS_ID,
+    voice_triggers: [
+      "show page actions",
+      "what can I do here",
+      "show current page actions",
+      "list page commands",
+      "what actions work on this page",
+    ],
+    description: "Show available voice actions for the current page",
+    execFunction: (): ExecFunctionResult => {
+      const currentRoute = voiceEngine.getCurrentRoute();
+      const availableActions = voiceEngine.getAvailableActionsForCurrentRoute();
+      
+      if (availableActions.length === 0) {
+        return {
+          resultText: "No actions available for this page",
+          userInfo: [`Current route: ${currentRoute}`, "No voice actions are registered for this specific page."],
+          error: "",
+        };
+      }
+
+      return {
+        resultText: `Found ${availableActions.length} actions for this page`,
+        userInfo: availableActions.map(action => 
+          `${action.description} - Say: "${action.voice_triggers[0]}"`
+        ),
+        error: "",
+      };
+    },
+  },
+];
 
 function App() {
   const [email, setEmail] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  useVoiceActions(VOICE_ACTIONS);
+
   useEffect(() => {
     const savedEmail = localStorage.getItem("chant-app-email");
     const savedLoginState = localStorage.getItem("chant-app-logged-in");
-    
+
     if (savedEmail && savedLoginState === "true") {
       setEmail(savedEmail);
       setIsLoggedIn(true);
@@ -34,18 +151,21 @@ function App() {
     localStorage.removeItem("chant-app-logged-in");
   };
 
-  if (!isLoggedIn) {
-    return <LoginForm onLogin={handleLogin} />;
-  }
-
   return (
-    <Router>
-      <AppLayout email={email} onLogout={handleLogout}>
-        <Route path="/" component={() => <Example1 />} />
-        <Route path="/example1" component={() => <Example1 />} />
-        <Route path="/example2" component={() => <Example2 />} />
-      </AppLayout>
-    </Router>
+    <>
+      {!isLoggedIn ? (
+        <LoginForm onLogin={handleLogin} />
+      ) : (
+        <Router>
+          <AppLayout email={email} onLogout={handleLogout}>
+            <Route path="/" component={() => <Example1 />} />
+            <Route path="/example1" component={() => <Example1 />} />
+            <Route path="/example2" component={() => <Example2 />} />
+          </AppLayout>
+        </Router>
+      )}
+      <VoiceListener />
+    </>
   );
 }
 

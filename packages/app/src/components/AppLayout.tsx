@@ -1,4 +1,3 @@
-import { VoiceListener } from "chant-sdk";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 
@@ -17,7 +16,6 @@ export function AppLayout({ email, onLogout, children }: AppLayoutProps) {
           {children}
         </main>
       </SidebarInset>
-      <VoiceListener />
     </SidebarProvider>
   );
 }

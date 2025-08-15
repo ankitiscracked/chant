@@ -4,24 +4,25 @@ import {
   VAD_PROCESSOR_URL,
   isAudioWorkletSupported,
 } from "../audio";
+import { voiceEngine } from "../utils";
 import type { VADCapabilities, VADConfig, VADOptions } from "../types";
 
 export function useVoiceActivityDetection(config?: VADConfig) {
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const isModuleLoadedRef = useRef(false);
+  const loadedContextsRef = useRef<Set<AudioContext>>(new Set());
   const isSupported = isAudioWorkletSupported();
 
   /**
-   * Load AudioWorklet module if not already loaded
+   * Load AudioWorklet module if not already loaded for this AudioContext
    */
   const loadWorkletModule = async (
     audioContext: AudioContext
   ): Promise<boolean> => {
-    if (isModuleLoadedRef.current) return true;
+    if (loadedContextsRef.current.has(audioContext)) return true;
 
     try {
       await audioContext.audioWorklet.addModule(VAD_PROCESSOR_URL);
-      isModuleLoadedRef.current = true;
+      loadedContextsRef.current.add(audioContext);
       console.log("AudioWorklet VAD module loaded successfully");
       return true;
     } catch (error) {
@@ -52,6 +53,9 @@ export function useVoiceActivityDetection(config?: VADConfig) {
     console.log("audio worklet started");
 
     try {
+      // Clean up any closed contexts first
+      cleanupClosedContexts();
+
       // Ensure AudioContext is running
       if (audioContext.state === "suspended") {
         await audioContext.resume();
@@ -83,9 +87,11 @@ export function useVoiceActivityDetection(config?: VADConfig) {
               timestamp,
               ...data,
             });
+            voiceEngine.setSpeaking(true);
             break;
           case "voice_end":
             console.log("AudioWorklet: Voice ended", { timestamp, ...data });
+            voiceEngine.setSpeaking(false);
             // Pass the audioBuffer from the VAD processor
             onSilenceDetected(data.audioBuffer);
             break;
@@ -109,12 +115,29 @@ export function useVoiceActivityDetection(config?: VADConfig) {
       workletNodeRef.current.disconnect();
       workletNodeRef.current = null;
     }
+    voiceEngine.setSpeaking(false);
+  };
+
+  /**
+   * Clean up closed AudioContexts from the loaded contexts set
+   */
+  const cleanupClosedContexts = () => {
+    const contextsToRemove: AudioContext[] = [];
+    loadedContextsRef.current.forEach((context) => {
+      if (context.state === 'closed') {
+        contextsToRemove.push(context);
+      }
+    });
+    contextsToRemove.forEach((context) => {
+      loadedContextsRef.current.delete(context);
+    });
   };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopVAD();
+      loadedContextsRef.current.clear();
     };
   }, []);
 
