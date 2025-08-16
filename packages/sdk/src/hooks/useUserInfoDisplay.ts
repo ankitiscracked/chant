@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
-import { voiceEngine } from "../utils";
+import { useEffect, useState } from "react";
+import { EventBus } from "../core/EventBus";
 import type { UserInfoDisplayEvent } from "../types";
 
 export function useUserInfoDisplay() {
-  const [displayData, setDisplayData] = useState<UserInfoDisplayEvent | null>(null);
+  const [displayData, setDisplayData] = useState<UserInfoDisplayEvent | null>(
+    null
+  );
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -16,8 +18,12 @@ export function useUserInfoDisplay() {
       }
     };
 
-    voiceEngine.addEventListener('userInfoDisplay', handleUserInfo);
-    return () => voiceEngine.removeEventListener('userInfoDisplay', handleUserInfo);
+    EventBus.getInstance().addEventListener("userInfoDisplay", handleUserInfo);
+    return () =>
+      EventBus.getInstance().removeEventListener(
+        "userInfoDisplay",
+        handleUserInfo
+      );
   }, []);
 
   const dismiss = () => {

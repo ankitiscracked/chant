@@ -1,5 +1,3 @@
-import { voiceEngine } from "../utils";
-
 export interface ActionElement {
   id: string;
   selector: string;
@@ -46,6 +44,7 @@ export interface UserInfoDisplayEvent extends ExecFunctionResult {
 }
 
 export type InformationalFunction = () => ExecFunctionResult | Promise<ExecFunctionResult>;
+export type ActionCacheFunction = (actionId: string, steps: ActionStep[]) => Promise<Record<string, any>>;
 
 export interface Action {
   actionId: string;
@@ -55,6 +54,7 @@ export interface Action {
   route?: string; // optional route to couple action to specific app routes
   pauseOnRequiredField?: boolean;
   execFunction?: InformationalFunction;
+  cacheFunction?: ActionCacheFunction;
 }
 
 export interface ActionStep {
@@ -109,5 +109,4 @@ export interface VoiceSegment {
   confidence?: number;
 }
 
-const validActionIds = voiceEngine.getActionIds();
-export type ValidActionId = (typeof validActionIds)[number];
+export type ValidActionId = string;

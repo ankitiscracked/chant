@@ -1,22 +1,17 @@
-export interface CachedActionStep {
-  id: string;
+import { type ActionStep, type Action, type ActionElement } from "../types";
+import stringify from "fast-json-stable-stringify";
+
+export interface CachedAction {
+  cacheId: string;
   actionId: string;
-  steps: Array<{
-    type: string;
-    elementId?: string;
-    value?: string;
-    url?: string;
-    delay?: number;
-  }>;
-  transcript: string;
+  steps: ActionStep[];
   completedAt: Date;
   successfulExecutions: number;
 }
 
 export interface ActionCacheRepository {
-  save(cachedAction: CachedActionStep): Promise<void>;
-  findByActionId(actionId: string): Promise<CachedActionStep[]>;
-  findByTranscript(transcript: string): Promise<CachedActionStep[]>;
+  save(cachedAction: CachedAction): Promise<void>;
+  findByCacheId(cacheId: string): Promise<CachedAction | undefined>;
   delete(id: string): Promise<void>;
   clear(): Promise<void>;
 }
@@ -25,7 +20,7 @@ export interface ActionCacheRepository {
 class LocalStorageRepository implements ActionCacheRepository {
   private readonly STORAGE_KEY = 'chant_action_cache';
 
-  private getStoredActions(): CachedActionStep[] {
+  private getStoredActions(): CachedAction[] {
     try {
       const data = localStorage.getItem(this.STORAGE_KEY);
       return data ? JSON.parse(data).map((item: any) => ({
@@ -37,7 +32,7 @@ class LocalStorageRepository implements ActionCacheRepository {
     }
   }
 
-  private setStoredActions(actions: CachedActionStep[]): void {
+  private setStoredActions(actions: CachedAction[]): void {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(actions));
     } catch (error) {
@@ -45,33 +40,25 @@ class LocalStorageRepository implements ActionCacheRepository {
     }
   }
 
-  async save(cachedAction: CachedActionStep): Promise<void> {
+  async save(cachedAction: CachedAction): Promise<void> {
     const actions = this.getStoredActions();
-    const existingIndex = actions.findIndex(a => a.id === cachedAction.id);
-    
+    const existingIndex = actions.findIndex(a => a.cacheId === cachedAction.cacheId);
+
     if (existingIndex >= 0) {
       actions[existingIndex] = cachedAction;
     } else {
       actions.push(cachedAction);
     }
-    
+
     this.setStoredActions(actions);
   }
 
-  async findByActionId(actionId: string): Promise<CachedActionStep[]> {
-    return this.getStoredActions().filter(a => a.actionId === actionId);
-  }
-
-  async findByTranscript(transcript: string): Promise<CachedActionStep[]> {
-    const normalizedTranscript = transcript.toLowerCase().trim();
-    return this.getStoredActions().filter(a => 
-      a.transcript.toLowerCase().trim().includes(normalizedTranscript) ||
-      normalizedTranscript.includes(a.transcript.toLowerCase().trim())
-    );
+  async findByCacheId(cacheId: string): Promise<CachedAction | undefined> {
+    return this.getStoredActions().find(a => a.cacheId === cacheId);
   }
 
   async delete(id: string): Promise<void> {
-    const actions = this.getStoredActions().filter(a => a.id !== id);
+    const actions = this.getStoredActions().filter(a => a.cacheId !== id);
     this.setStoredActions(actions);
   }
 
@@ -82,17 +69,12 @@ class LocalStorageRepository implements ActionCacheRepository {
 
 // Database implementation (future)
 class DatabaseRepository implements ActionCacheRepository {
-  async save(cachedAction: CachedActionStep): Promise<void> {
+  async save(cachedAction: CachedAction): Promise<void> {
     // TODO: Implement database save
     throw new Error('Database repository not implemented yet');
   }
 
-  async findByActionId(actionId: string): Promise<CachedActionStep[]> {
-    // TODO: Implement database query
-    throw new Error('Database repository not implemented yet');
-  }
-
-  async findByTranscript(transcript: string): Promise<CachedActionStep[]> {
+  async findByCacheId(cacheId: string): Promise<CachedAction | undefined> {
     // TODO: Implement database query
     throw new Error('Database repository not implemented yet');
   }
@@ -116,68 +98,38 @@ export class ActionCacheService {
   }
 
   async cacheSuccessfulAction(
-    actionId: string,
-    steps: Array<{
-      type: string;
-      elementId?: string;
-      value?: string;
-      url?: string;
-      delay?: number;
-    }>,
-    transcript: string
+    action: Action,
+    actionElements: ActionElement[],
+    steps: ActionStep[]
   ): Promise<void> {
-    const id = `${actionId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    const cachedAction: CachedActionStep = {
-      id,
-      actionId,
+    const cacheId = await getCacheId(action, actionElements);
+    const existing = await this.repository.findByCacheId(cacheId);
+
+    const cachedAction: CachedAction = {
+      cacheId,
+      actionId: action.actionId,
       steps,
-      transcript,
       completedAt: new Date(),
       successfulExecutions: 1
     };
 
-    // Check if similar action already exists
-    const existing = await this.repository.findByActionId(actionId);
-    const similar = existing.find(a => 
-      JSON.stringify(a.steps) === JSON.stringify(steps)
-    );
-
-    if (similar) {
-      similar.successfulExecutions++;
-      similar.completedAt = new Date();
-      await this.repository.save(similar);
+    if (existing) {
+      existing.successfulExecutions++;
+      existing.completedAt = new Date();
+      await this.repository.save(existing);
     } else {
       await this.repository.save(cachedAction);
     }
   }
 
-  async findCachedSteps(actionId: string, transcript?: string): Promise<CachedActionStep[]> {
-    if (transcript) {
-      const transcriptMatches = await this.repository.findByTranscript(transcript);
-      const actionMatches = await this.repository.findByActionId(actionId);
-      
-      // Prioritize transcript matches, then action matches
-      const combined = [...transcriptMatches, ...actionMatches.filter(a => 
-        !transcriptMatches.some(t => t.id === a.id)
-      )];
-      
-      return combined.sort((a, b) => 
-        b.successfulExecutions - a.successfulExecutions || 
-        b.completedAt.getTime() - a.completedAt.getTime()
-      );
-    }
-    
-    const matches = await this.repository.findByActionId(actionId);
-    return matches.sort((a, b) => 
-      b.successfulExecutions - a.successfulExecutions || 
-      b.completedAt.getTime() - a.completedAt.getTime()
-    );
+  async findCachedAction(action: Action, actionElements: ActionElement[] = []): Promise<CachedAction | undefined> {
+    const cacheId = await getCacheId(action, actionElements);
+    return await this.repository.findByCacheId(cacheId);
   }
 
-  async hasCachedSteps(actionId: string): Promise<boolean> {
-    const cached = await this.repository.findByActionId(actionId);
-    return cached.length > 0;
+  async hasCachedAction(cacheId: string): Promise<boolean> {
+    const cached = await this.repository.findByCacheId(cacheId);
+    return !!cached;
   }
 
   async clearCache(): Promise<void> {
@@ -187,4 +139,27 @@ export class ActionCacheService {
   async removeCachedAction(id: string): Promise<void> {
     await this.repository.delete(id);
   }
+}
+
+async function hashObject(obj: Record<string, any>) {
+  const stableString = stringify(obj);
+  const encoder = new TextEncoder();
+  const data = encoder.encode(stableString);
+
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+
+  return hashHex;
+}
+
+async function getCacheId(action: Action, actionElements: ActionElement[] = []) {
+  let cacheId = action.actionId;
+  if (action.cacheFunction) {
+    const result = await action.cacheFunction(action.actionId, actionElements);
+    const hash = await hashObject(result);
+    cacheId = action.actionId + '-' + hash;
+  }
+
+  return cacheId;
 }

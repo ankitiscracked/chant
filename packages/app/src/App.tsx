@@ -2,11 +2,23 @@ import { AppLayout } from "@/components/AppLayout";
 import { Example1 } from "@/components/Example1";
 import { Example2 } from "@/components/Example2";
 import { LoginForm } from "@/components/LoginForm";
-import { VoiceListener, type Action, type ExecFunctionResult, voiceEngine } from "chant-sdk";
+import {
+  VoiceListener,
+  VoiceEngineProvider,
+  VoiceEngine,
+  type Action,
+  type ExecFunctionResult,
+} from "chant-sdk";
 import { useEffect, useState } from "react";
 import { Route, Router } from "wouter";
 import { useVoiceActions } from "chant-sdk";
-import { CREATE_SUPPORT_TICKET_ACTION_ID, LOGIN_ACTION_ID, ADD_TO_CART_ACTION_ID, SHOW_ALL_ACTIONS_ID, SHOW_PAGE_ACTIONS_ID } from "./lib/utils";
+import {
+  CREATE_SUPPORT_TICKET_ACTION_ID,
+  LOGIN_ACTION_ID,
+  ADD_TO_CART_ACTION_ID,
+  SHOW_ALL_ACTIONS_ID,
+  SHOW_PAGE_ACTIONS_ID,
+} from "./lib/utils";
 
 // Centralized voice actions configuration
 const VOICE_ACTIONS: Action[] = [
@@ -71,8 +83,8 @@ const VOICE_ACTIONS: Action[] = [
     ],
     description: "Show all available voice actions across the app",
     execFunction: (): ExecFunctionResult => {
-      const allActions = voiceEngine.getActions();
-      const actionList = Array.from(allActions.values()).map(action => ({
+      const allActions = voiceEngineInstance.getActions();
+      const actionList = Array.from(allActions.values()).map((action) => ({
         id: action.actionId,
         description: action.description,
         triggers: action.voice_triggers,
@@ -81,8 +93,11 @@ const VOICE_ACTIONS: Action[] = [
 
       return {
         resultText: `Found ${actionList.length} actions available`,
-        userInfo: actionList.map(action => 
-          `${action.description} (${action.route}) - Triggers: "${action.triggers.join('", "')}"`
+        userInfo: actionList.map(
+          (action) =>
+            `${action.description} (${
+              action.route
+            }) - Triggers: "${action.triggers.join('", "')}"`
         ),
         error: "",
       };
@@ -99,27 +114,35 @@ const VOICE_ACTIONS: Action[] = [
     ],
     description: "Show available voice actions for the current page",
     execFunction: (): ExecFunctionResult => {
-      const currentRoute = voiceEngine.getCurrentRoute();
-      const availableActions = voiceEngine.getAvailableActionsForCurrentRoute();
-      
+      const currentRoute = voiceEngineInstance.getCurrentRoute();
+      const availableActions =
+        voiceEngineInstance.getAvailableActionsForCurrentRoute();
+
       if (availableActions.length === 0) {
         return {
           resultText: "No actions available for this page",
-          userInfo: [`Current route: ${currentRoute}`, "No voice actions are registered for this specific page."],
+          userInfo: [
+            `Current route: ${currentRoute}`,
+            "No voice actions are registered for this specific page.",
+          ],
           error: "",
         };
       }
 
       return {
         resultText: `Found ${availableActions.length} actions for this page`,
-        userInfo: availableActions.map(action => 
-          `${action.description} - Say: "${action.voice_triggers[0]}"`
+        userInfo: availableActions.map(
+          (action) =>
+            `${action.description} - Say: "${action.voice_triggers[0]}"`
         ),
         error: "",
       };
     },
   },
 ];
+
+// Create singleton VoiceEngine instance
+const voiceEngineInstance = new VoiceEngine();
 
 function App() {
   const [email, setEmail] = useState("");
@@ -169,4 +192,12 @@ function App() {
   );
 }
 
-export default App;
+function Main() {
+  return (
+    <VoiceEngineProvider voiceEngine={voiceEngineInstance}>
+      <App />
+    </VoiceEngineProvider>
+  );
+}
+
+export default Main;

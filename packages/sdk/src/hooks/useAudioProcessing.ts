@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { voiceEngine } from '../utils';
+import { useState } from "react";
+import { useVoiceEngine } from "../context/VoiceEngineContext";
 
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -12,6 +12,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 export function useAudioProcessing() {
+  const voiceEngine = useVoiceEngine();
   const [transcript, setTranscript] = useState("");
 
   const processAudioChunk = async (audioBlob: Blob) => {
@@ -20,7 +21,7 @@ export function useAudioProcessing() {
 
     const audioBase64 = await blobToBase64(audioBlob);
     try {
-      await voiceEngine.handleAudio((audioBase64));
+      await voiceEngine.handleAudio(audioBase64);
     } catch (error) {
       console.error("Transcription failed:", error);
       setTranscript("Error: Could not transcribe audio");
@@ -30,6 +31,6 @@ export function useAudioProcessing() {
 
   return {
     transcript,
-    processAudioChunk
+    processAudioChunk,
   };
 }

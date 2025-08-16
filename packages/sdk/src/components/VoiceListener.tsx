@@ -3,10 +3,11 @@ import { useVoiceRecording } from "../hooks";
 import { useVoiceState } from "../hooks/useVoiceState";
 import { useUserInfoDisplay } from "../hooks";
 import { useActionSuccessFlow } from "../hooks/useActionSuccessFlow";
-import { voiceEngine } from "../utils";
+import { useVoiceEngine } from "../context/VoiceEngineContext";
+import { EventBus } from "../core/EventBus";
 import { UserInfoDisplay } from "./UserInfoDisplay";
-import { ActionSuccessDialog } from "./ActionSuccessDialog";
-import { ActionTriggerSuggestions } from "./ActionTriggerSuggestions";
+import { ActionSuccessFlowUI } from "./ActionSuccessFlowUI";
+import { ActionTriggerSuggestionsUI } from "./ActionTriggerSuggestionsUI";
 
 // Icon components
 const WaveformIcon = () => (
@@ -194,6 +195,8 @@ interface StateConfig {
 }
 
 export function VoiceListener() {
+  const voiceEngine = useVoiceEngine();
+  
   const [hasActions, setHasActions] = useState(true);
   const [currentRoute, setCurrentRoute] = useState(window.location.pathname);
   const [showNoMatchWarning, setShowNoMatchWarning] = useState(false);
@@ -204,28 +207,11 @@ export function VoiceListener() {
     useVoiceState();
   const { enabled, transcript, start, stop } = useVoiceRecording();
   const { displayData, isVisible, dismiss } = useUserInfoDisplay();
-  
+
   const [successFlowState, successFlowActions] = useActionSuccessFlow();
 
-  // Handle action completion - show success dialog instead of auto-reset
+  // Handle completion state reset
   useEffect(() => {
-    const handleActionsCompleted = (event: CustomEvent) => {
-      const { actions } = event.detail;
-      if (executionState.actionId) {
-        const action = voiceEngine.getActions().get(executionState.actionId);
-        if (action) {
-          successFlowActions.handleActionCompleted(
-            executionState.actionId,
-            action.description,
-            voiceListenerState.transcript,
-            actions
-          );
-        }
-      }
-    };
-
-    voiceEngine.addEventListener("actionsCompleted", handleActionsCompleted);
-
     if (isCompleted) {
       // Reset to idle state
       voiceEngine.updateExecutionState({ status: "idle" });
@@ -234,11 +220,7 @@ export function VoiceListener() {
         transcript: "",
       });
     }
-
-    return () => {
-      voiceEngine.removeEventListener("actionsCompleted", handleActionsCompleted);
-    };
-  }, [isCompleted, executionState.actionId, voiceListenerState.transcript, successFlowActions]);
+  }, [isCompleted]);
 
   // Listen for warning events from voice engine
   useEffect(() => {
@@ -253,12 +235,12 @@ export function VoiceListener() {
       setTimeout(() => setShowNoElementsWarning(false), 4000);
     };
 
-    voiceEngine.addEventListener("noMatchWarning", handleNoMatchWarning);
-    voiceEngine.addEventListener("noElementsWarning", handleNoElementsWarning);
+    EventBus.getInstance().addEventListener("noMatchWarning", handleNoMatchWarning);
+    EventBus.getInstance().addEventListener("noElementsWarning", handleNoElementsWarning);
 
     return () => {
-      voiceEngine.removeEventListener("noMatchWarning", handleNoMatchWarning);
-      voiceEngine.removeEventListener("noElementsWarning", handleNoElementsWarning);
+      EventBus.getInstance().removeEventListener("noMatchWarning", handleNoMatchWarning);
+      EventBus.getInstance().removeEventListener("noElementsWarning", handleNoElementsWarning);
     };
   }, []);
 
@@ -393,11 +375,6 @@ export function VoiceListener() {
   const isIdle = !enabled;
   console.log("voice listener state", voiceListenerState);
 
-  // Function to get available triggers for current action
-  const getAvailableTriggersForAction = (actionId: string): string[] => {
-    const action = voiceEngine.getActions().get(actionId);
-    return action?.voice_triggers || [];
-  };
 
   // Check if we have additional info to show
   const hasTranscript = transcript || voiceListenerState.transcript;
@@ -405,7 +382,8 @@ export function VoiceListener() {
   const hasNoActions = !hasActions;
   const hasWarnings = showNoMatchWarning || showNoElementsWarning;
   const hasUserInfo = isVisible && displayData;
-  const hasAdditionalInfo = hasTranscript || hasPauseInfo || hasNoActions || hasWarnings || hasUserInfo;
+  const hasSuccessFlow = successFlowState.showSuccessFlow || successFlowState.showTriggerSuggestions;
+  const hasAdditionalInfo = hasTranscript || hasPauseInfo || hasNoActions || hasWarnings || hasUserInfo || hasSuccessFlow;
 
   return (
     <div className="fixed bottom-6 right-6 z-50">
@@ -483,6 +461,30 @@ export function VoiceListener() {
           {hasUserInfo && (
             <UserInfoDisplay displayData={displayData} onDismiss={dismiss} />
           )}
+
+          {/* Success flow UI */}
+          {successFlowState.showSuccessFlow && (
+            <ActionSuccessFlowUI
+              transcript={successFlowState.currentTranscript}
+              actionDescription={successFlowState.currentActionDescription}
+              onSuccess={successFlowActions.handleSuccess}
+              onFailure={() => {
+                const action = voiceEngine.getActions().get(successFlowState.currentActionId!);
+                const triggers = action?.voice_triggers || [];
+                successFlowActions.handleFailure(triggers);
+              }}
+            />
+          )}
+
+          {/* Trigger suggestions UI */}
+          {successFlowState.showTriggerSuggestions && (
+            <ActionTriggerSuggestionsUI
+              actionDescription={successFlowState.currentActionDescription}
+              availableTriggers={successFlowState.availableTriggers}
+              onRetry={successFlowActions.handleRetry}
+              onDismiss={successFlowActions.dismissDialogs}
+            />
+          )}
         </div>
       )}
 
@@ -556,31 +558,6 @@ export function VoiceListener() {
         </a>
       </div>
 
-      {/* Success confirmation dialog */}
-      <ActionSuccessDialog
-        isVisible={successFlowState.showSuccessDialog}
-        actionId={successFlowState.currentActionId || ''}
-        actionDescription={successFlowState.currentActionDescription}
-        transcript={successFlowState.currentTranscript}
-        onSuccess={successFlowActions.handleSuccess}
-        onFailure={() => {
-          const triggers = successFlowState.currentActionId 
-            ? getAvailableTriggersForAction(successFlowState.currentActionId)
-            : [];
-          successFlowActions.handleFailure(triggers);
-        }}
-        onDismiss={successFlowActions.dismissDialogs}
-      />
-
-      {/* Action trigger suggestions */}
-      <ActionTriggerSuggestions
-        isVisible={successFlowState.showTriggerSuggestions}
-        actionId={successFlowState.currentActionId || ''}
-        actionDescription={successFlowState.currentActionDescription}
-        availableTriggers={successFlowState.availableTriggers}
-        onRetry={successFlowActions.handleRetry}
-        onDismiss={successFlowActions.dismissDialogs}
-      />
     </div>
   );
 }

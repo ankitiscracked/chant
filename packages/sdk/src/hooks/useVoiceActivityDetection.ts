@@ -4,10 +4,11 @@ import {
   VAD_PROCESSOR_URL,
   isAudioWorkletSupported,
 } from "../audio";
-import { voiceEngine } from "../utils";
-import type { VADCapabilities, VADConfig, VADOptions } from "../types";
+import type { VADConfig } from "../types";
+import { useVoiceEngine } from "../context/VoiceEngineContext";
 
 export function useVoiceActivityDetection(config?: VADConfig) {
+  const voiceEngine = useVoiceEngine();
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const loadedContextsRef = useRef<Set<AudioContext>>(new Set());
   const isSupported = isAudioWorkletSupported();
@@ -124,7 +125,7 @@ export function useVoiceActivityDetection(config?: VADConfig) {
   const cleanupClosedContexts = () => {
     const contextsToRemove: AudioContext[] = [];
     loadedContextsRef.current.forEach((context) => {
-      if (context.state === 'closed') {
+      if (context.state === "closed") {
         contextsToRemove.push(context);
       }
     });

@@ -15,8 +15,9 @@ import type {
 } from "../types";
 import { ActionDispatcher } from "./ActionDispatcher";
 import { ActionCacheService } from "../services/ActionCacheService";
+import { EventBus } from "./EventBus";
 
-export class VoiceEngine extends EventTarget {
+export class VoiceEngine {
   private elementsByAction = new Map<string, ActionElement[]>();
   private actions = new Map<string, Action>();
   private currentRoute = "/";
@@ -44,8 +45,31 @@ export class VoiceEngine extends EventTarget {
     return Array.from(this.actions.values());
   }
 
-  constructor() {
-    super();
+  getElementsByActionId(actionId: string): ActionElement[] {
+    return Array.from(this.elementsByAction.get(actionId) || []);
+  }
+
+  constructor() {}
+
+  // Event management methods for compatibility
+  addEventListener(
+    type: string,
+    listener: EventListener,
+    options?: boolean | AddEventListenerOptions
+  ): void {
+    EventBus.getInstance().addEventListener(type, listener, options);
+  }
+
+  removeEventListener(
+    type: string,
+    listener: EventListener,
+    options?: boolean | EventListenerOptions
+  ): void {
+    EventBus.getInstance().removeEventListener(type, listener, options);
+  }
+
+  dispatchEvent(event: Event): boolean {
+    return EventBus.getInstance().dispatchEvent(event);
   }
 
   // State management
@@ -59,7 +83,7 @@ export class VoiceEngine extends EventTarget {
 
   updateExecutionState(updates: Partial<ExecutionState>) {
     this.executionState = { ...this.executionState, ...updates };
-    this.dispatchEvent(
+    EventBus.getInstance().dispatchEvent(
       new CustomEvent("executionStateChange", {
         detail: { ...this.executionState },
       })
@@ -68,7 +92,7 @@ export class VoiceEngine extends EventTarget {
 
   updateVoiceListenerState(updates: Partial<VoiceListenerState>) {
     this.voiceListenerState = { ...this.voiceListenerState, ...updates };
-    this.dispatchEvent(
+    EventBus.getInstance().dispatchEvent(
       new CustomEvent("voiceListenerStateChange", {
         detail: { ...this.voiceListenerState },
       })
@@ -109,7 +133,9 @@ export class VoiceEngine extends EventTarget {
       ])
     );
 
-    const actionDispatcher = new ActionDispatcher(elements, this, () => this.getExecutionState());
+    const actionDispatcher = new ActionDispatcher(elements, this, () =>
+      this.getExecutionState()
+    );
     await actionDispatcher.executeActions(actions);
   }
 
@@ -121,36 +147,39 @@ export class VoiceEngine extends EventTarget {
       const result = await this.executeWithTimeout(action.execFunction, 5000);
 
       // Dispatch user info display event
-      this.dispatchEvent(
+      EventBus.getInstance().dispatchEvent(
         new CustomEvent("userInfoDisplay", {
           detail: {
             actionId: action.actionId,
             resultText: result.resultText,
             userInfo: result.userInfo || [],
-            error: result.error
-          } satisfies UserInfoDisplayEvent
+            error: result.error,
+          } satisfies UserInfoDisplayEvent,
         })
       );
     } catch (error) {
-      this.dispatchEvent(
+      EventBus.getInstance().dispatchEvent(
         new CustomEvent("userInfoDisplay", {
           detail: {
             actionId: action.actionId,
-            resultText: '',
+            resultText: "",
             userInfo: [],
-            error: error instanceof Error ? error.message : 'Unknown error'
-          } satisfies UserInfoDisplayEvent
+            error: error instanceof Error ? error.message : "Unknown error",
+          } satisfies UserInfoDisplayEvent,
         })
       );
     }
   }
 
-  private executeWithTimeout<T>(fn: () => T | Promise<T>, timeout: number): Promise<T> {
+  private executeWithTimeout<T>(
+    fn: () => T | Promise<T>,
+    timeout: number
+  ): Promise<T> {
     return Promise.race([
       Promise.resolve(fn()),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Function timeout')), timeout)
-      )
+        setTimeout(() => reject(new Error("Function timeout")), timeout)
+      ),
     ]);
   }
 
@@ -220,7 +249,11 @@ export class VoiceEngine extends EventTarget {
   // Multimodal intent resolution using audio
   private async resolveIntentFromAudio(
     audioBase64: string
-  ): Promise<{ actionId: string | null; transcription: string; isDemoMode?: boolean }> {
+  ): Promise<{
+    actionId: string | null;
+    transcription: string;
+    isDemoMode?: boolean;
+  }> {
     const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
     if (!GEMINI_API_KEY) {
       throw new Error("VITE_GEMINI_API_KEY environment variable is required");
@@ -435,9 +468,16 @@ Examples:
 
     // Check for cached actions first
     try {
-      const cachedActions = await this.actionCacheService.findCachedSteps(actionId, transcript);
+      const cachedActions = await this.actionCacheService.findCachedAction(
+        action
+      );
       if (cachedActions.length > 0) {
-        console.log("Found cached actions for", actionId, ":", cachedActions[0].steps);
+        console.log(
+          "Found cached actions for",
+          actionId,
+          ":",
+          cachedActions[0].steps
+        );
         return cachedActions[0].steps;
       }
     } catch (error) {
@@ -448,17 +488,17 @@ Examples:
     const actionElements = this.elementsByAction.get(actionId);
     const elementsData = actionElements
       ? Array.from(actionElements.values()).map((el) => ({
-        id: el.id,
-        type: el.type,
-        label: el.label,
-        selector: el.selector,
-        metadata: el.metadata || {},
-        affectsPersistentState: el.affectsPersistentState || false,
-        hasDemoHandler: !!el.demoHandler,
-        value: el.ref?.current
-          ? (el.ref.current as HTMLInputElement).value || ""
-          : "",
-      }))
+          id: el.id,
+          type: el.type,
+          label: el.label,
+          selector: el.selector,
+          metadata: el.metadata || {},
+          affectsPersistentState: el.affectsPersistentState || false,
+          hasDemoHandler: !!el.demoHandler,
+          value: el.ref?.current
+            ? (el.ref.current as HTMLInputElement).value || ""
+            : "",
+        }))
       : [];
 
     console.log("action elements", actionElements);
@@ -488,15 +528,15 @@ Element matching strategy:
 
 Element analysis:
 ${elementsData
-        .map(
-          (el) =>
-            `- ${el.id} (${el.type}): "${el.label}"
+  .map(
+    (el) =>
+      `- ${el.id} (${el.type}): "${el.label}"
   Metadata: ${JSON.stringify(el.metadata)}
   Current value: "${el.value}"
   Affects persistent state: ${el.affectsPersistentState}
   Has demo handler: ${el.hasDemoHandler}`
-        )
-        .join("\n")}
+  )
+  .join("\n")}
 
 Examples of matching:
 - Command: "add smart headphones to cart" → Match element with metadata.productTitle containing "headphones"
@@ -568,7 +608,9 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
       // Verify the elementId exists in available elements
       const element = elementsData.find((el) => el.id === action.elementId);
       if (!element) {
-        console.warn(`Action references non-existent element: ${action.elementId}`);
+        console.warn(
+          `Action references non-existent element: ${action.elementId}`
+        );
         continue;
       }
 
@@ -590,7 +632,6 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
 
     return validatedActions;
   }
-
 
   private generateFallbackValue(element: any, transcript: string): string {
     const label = element.label?.toLowerCase() || "";
@@ -694,18 +735,15 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
         console.log("Transcription:", result.transcription);
 
         // Emit no match warning event
-        this.dispatchEvent(
+        EventBus.getInstance().dispatchEvent(
           new CustomEvent("noMatchWarning", {
-            detail: { transcript: result.transcription }
+            detail: { transcript: result.transcription },
           })
         );
 
         this.updateVoiceListenerState({ status: "listening", transcript: "" });
         return;
       }
-
-      console.log("Multimodal analysis found actionId:", result.actionId);
-      console.log("Transcription:", result.transcription);
 
       const action = this.actions.get(result.actionId);
       if (!action) {
@@ -716,7 +754,10 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
 
       // Check if this action has an execFunction - if so, execute directly
       if (action.execFunction) {
-        console.log("Executing informational function for action:", result.actionId);
+        console.log(
+          "Executing informational function for action:",
+          result.actionId
+        );
         await this.executeInformationalFunction(action);
         this.updateVoiceListenerState({ status: "idle", transcript: "" });
         return;
@@ -728,9 +769,12 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
         console.log("No elements registered for action:", result.actionId);
 
         // Emit no elements warning event
-        this.dispatchEvent(
+        EventBus.getInstance().dispatchEvent(
           new CustomEvent("noElementsWarning", {
-            detail: { actionId: result.actionId, transcript: result.transcription }
+            detail: {
+              actionId: result.actionId,
+              transcript: result.transcription,
+            },
           })
         );
 
@@ -739,8 +783,6 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
       }
 
       this.updateVoiceListenerState({ status: "planning" });
-      console.log("Generating actions for actionId:", result.actionId);
-      console.log("Demo mode:", result.isDemoMode);
 
       const actions = await this.generateActions(
         result.actionId,
@@ -781,9 +823,9 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
       console.log("No action ID found, returning early");
 
       // Emit no match warning event
-      this.dispatchEvent(
+      EventBus.getInstance().dispatchEvent(
         new CustomEvent("noMatchWarning", {
-          detail: { transcript }
+          detail: { transcript },
         })
       );
 
@@ -811,9 +853,9 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
         console.log("No elements registered for action:", actionId);
 
         // Emit no elements warning event
-        this.dispatchEvent(
+        EventBus.getInstance().dispatchEvent(
           new CustomEvent("noElementsWarning", {
-            detail: { actionId, transcript }
+            detail: { actionId, transcript },
           })
         );
 

@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
-import { voiceEngine } from "../utils";
+import { useEffect, useState } from "react";
+import { useVoiceEngine } from "../context/VoiceEngineContext";
+import { EventBus } from "../core/EventBus";
 import type { ExecutionState, VoiceListenerState } from "../types";
 
 export const useVoiceState = () => {
+  const voiceEngine = useVoiceEngine();
   const [executionState, setExecutionState] = useState<ExecutionState>(() =>
     voiceEngine.getExecutionState()
   );
@@ -20,21 +22,21 @@ export const useVoiceState = () => {
       setVoiceListenerState(event.detail);
     };
 
-    voiceEngine.addEventListener(
+    EventBus.getInstance().addEventListener(
       "executionStateChange",
       handleExecutionStateChange as EventListener
     );
-    voiceEngine.addEventListener(
+    EventBus.getInstance().addEventListener(
       "voiceListenerStateChange",
       handleVoiceListenerStateChange as EventListener
     );
 
     return () => {
-      voiceEngine.removeEventListener(
+      EventBus.getInstance().removeEventListener(
         "executionStateChange",
         handleExecutionStateChange as EventListener
       );
-      voiceEngine.removeEventListener(
+      EventBus.getInstance().removeEventListener(
         "voiceListenerStateChange",
         handleVoiceListenerStateChange as EventListener
       );

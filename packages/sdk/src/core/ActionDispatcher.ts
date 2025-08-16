@@ -1,4 +1,5 @@
-import type { ActionStep, ActionElement, ExecutionState } from "../types";
+import type { ActionStep, ActionElement, ExecutionState, ActionCacheFunction } from "../types";
+import { EventBus } from "./EventBus";
 
 interface ExecutionStateUpdater {
   updateExecutionState(updates: Partial<ExecutionState>): void;
@@ -8,11 +9,13 @@ export class ActionDispatcher {
   private elements: Map<string, ActionElement>;
   private stateUpdater: ExecutionStateUpdater;
   private getExecutionState: () => ExecutionState;
+  private actionCacheFunction?: ActionCacheFunction;
 
-  constructor(elements: Map<string, ActionElement>, stateUpdater: ExecutionStateUpdater, getExecutionState: () => ExecutionState) {
+  constructor(elements: Map<string, ActionElement>, stateUpdater: ExecutionStateUpdater, getExecutionState: () => ExecutionState, cacheFunction?: ActionCacheFunction) {
     this.elements = elements;
     this.stateUpdater = stateUpdater;
     this.getExecutionState = getExecutionState;
+    this.actionCacheFunction = cacheFunction;
   }
 
   private getElementRef(elementId: string): HTMLElement | null {
@@ -60,6 +63,7 @@ export class ActionDispatcher {
         console.log("Action completed:", action);
 
         if (pauseInfo) {
+          console.log("Action execution paused due to:", pauseInfo);
           const remainingActions = actions.slice(i + 1);
           this.stateUpdater.updateExecutionState({
             status: "paused",
@@ -82,13 +86,13 @@ export class ActionDispatcher {
     });
 
     // Dispatch event to trigger success dialog
-    if (this.stateUpdater instanceof EventTarget) {
-      (this.stateUpdater as EventTarget).dispatchEvent(
-        new CustomEvent("actionsCompleted", {
-          detail: { actions }
-        })
-      );
-    }
+    console.log("About to dispatch actionsCompleted event with actions:", actions);
+    EventBus.getInstance().dispatchEvent(
+      new CustomEvent("actionsCompleted", {
+        detail: { actions }
+      })
+    );
+    console.log("actionsCompleted event dispatched");
   }
 
   private async executeAction(
@@ -103,14 +107,14 @@ export class ActionDispatcher {
     // Check if we're in demo mode and this element affects persistent state
     const executionState = this.getExecutionState();
     const voiceElement = actionStep.elementId ? this.elements.get(actionStep.elementId) : null;
-    
+
     if (executionState.isDemoMode && voiceElement?.affectsPersistentState) {
       console.log("Demo mode: executing demo handler for persistent state element");
-      
+
       if (!voiceElement.demoHandler) {
         throw new Error(`Demo mode error: Element ${actionStep.elementId} affects persistent state but no demoHandler is provided`);
       }
-      
+
       try {
         await voiceElement.demoHandler();
         console.log("Demo handler executed successfully");
