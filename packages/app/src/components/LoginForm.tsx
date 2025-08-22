@@ -13,19 +13,16 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   const [password, setPassword] = useState("");
 
   const emailRef = useVoiceElement(LOGIN_ACTION_ID, {
-    selector: "#email-input",
     type: "input",
     label: "Email input field",
   });
 
   const passwordRef = useVoiceElement(LOGIN_ACTION_ID, {
-    selector: "#password-input",
     type: "input",
     label: "Password input field",
   });
 
   const loginButtonRef = useVoiceElement(LOGIN_ACTION_ID, {
-    selector: "#login-button",
     type: "button",
     label: "Login button",
   });
@@ -37,10 +34,10 @@ export function LoginForm({ onLogin }: LoginFormProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="flex items-center justify-center min-h-screen p-4 bg-background">
       <div className="w-full max-w-md">
-        <div className="bg-card border rounded-lg shadow-lg p-6">
-          <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
+        <div className="p-6 border rounded-lg shadow-lg bg-card">
+          <h1 className="mb-6 text-2xl font-bold text-center">Login</h1>
           <form
             onSubmit={(e) => {
               e.preventDefault();

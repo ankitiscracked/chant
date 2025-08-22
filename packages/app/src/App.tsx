@@ -64,10 +64,13 @@ const VOICE_ACTIONS: Action[] = [
       "shop for",
       "get",
     ],
-    description: "Add a product to cart by name or description",
+    description:
+      "Add a product to cart by name or description and proceed to checkout",
     steps: [
       "Find the product that matches the spoken name or description",
       "Click the 'Add to Cart' button for that product",
+      "Click the cart button to continue",
+      "Click the checkout button to complete the purchase",
     ],
     route: "/example1",
     pauseOnRequiredField: false,
@@ -142,7 +145,9 @@ const VOICE_ACTIONS: Action[] = [
 ];
 
 // Create singleton VoiceEngine instance
-const voiceEngineInstance = new VoiceEngine();
+const voiceEngineInstance = new VoiceEngine({
+  geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY,
+});
 
 function App() {
   const [email, setEmail] = useState("");

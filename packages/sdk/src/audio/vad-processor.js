@@ -5,26 +5,31 @@
 class VADProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
-    
+
     // Configuration from main thread
-    const { threshold = 0.01, silenceDuration = 1500 } = options?.processorOptions || {};
-    
+    const { threshold = 0.1, silenceDuration = 1500 } =
+      options?.processorOptions || {};
+
     this.threshold = threshold;
     this.silenceDuration = silenceDuration;
-    
+
     // State tracking
     this.isVoiceActive = false;
     this.lastVoiceTime = 0;
     this.currentTime = 0;
-    
+
     // Audio buffering for WAV creation
     this.audioBuffer = [];
-    
+
     // Performance tracking
     this.frameCount = 0;
     this.sampleRate = sampleRate || 44100;
-    
-    console.log('VADProcessor initialized:', { threshold, silenceDuration, sampleRate: this.sampleRate });
+
+    console.log("VADProcessor initialized:", {
+      threshold,
+      silenceDuration,
+      sampleRate: this.sampleRate,
+    });
   }
 
   /**
@@ -39,7 +44,8 @@ class VADProcessor extends AudioWorkletProcessor {
 
     const samples = input[0]; // Get mono channel samples
     this.frameCount++;
-    this.currentTime = (this.frameCount * samples.length / this.sampleRate) * 1000; // Convert to milliseconds
+    this.currentTime =
+      ((this.frameCount * samples.length) / this.sampleRate) * 1000; // Convert to milliseconds
 
     // Buffer audio samples when voice is active
     if (this.isVoiceActive) {
@@ -50,10 +56,10 @@ class VADProcessor extends AudioWorkletProcessor {
 
     // Calculate RMS (Root Mean Square) for volume detection
     const rms = this.calculateRMS(samples);
-    
+
     // Voice activity detection logic
     this.processVoiceActivity(rms);
-    
+
     return true; // Keep processor alive
   }
 
@@ -83,10 +89,10 @@ class VADProcessor extends AudioWorkletProcessor {
       if (!this.isVoiceActive) {
         this.isVoiceActive = true;
         this.audioBuffer = []; // Clear any previous buffer
-        this.sendMessage('voice_start', {
+        this.sendMessage("voice_start", {
           timestamp: this.currentTime,
           rms: rms,
-          threshold: this.threshold
+          threshold: this.threshold,
         });
       }
       this.lastVoiceTime = this.currentTime;
@@ -94,18 +100,18 @@ class VADProcessor extends AudioWorkletProcessor {
       // No voice detected
       if (this.isVoiceActive) {
         const silenceDuration = this.currentTime - this.lastVoiceTime;
-        
+
         if (silenceDuration > this.silenceDuration) {
           this.isVoiceActive = false;
-          
+
           // Create WAV file from buffered samples
           const wavData = this.createWavFromBuffer();
-          
-          this.sendMessage('voice_end', {
+
+          this.sendMessage("voice_end", {
             timestamp: this.currentTime,
             silenceDuration: silenceDuration,
             rms: rms,
-            audioBuffer: wavData // Send WAV data instead of relying on MediaRecorder
+            audioBuffer: wavData, // Send WAV data instead of relying on MediaRecorder
           });
         }
       }
@@ -123,11 +129,11 @@ class VADProcessor extends AudioWorkletProcessor {
 
     // Calculate total samples
     const totalSamples = this.audioBuffer.length * this.audioBuffer[0].length;
-    
+
     // Create single Float32Array from all buffered chunks
     const combinedSamples = new Float32Array(totalSamples);
     let offset = 0;
-    
+
     for (const chunk of this.audioBuffer) {
       combinedSamples.set(chunk, offset);
       offset += chunk.length;
@@ -164,12 +170,12 @@ class VADProcessor extends AudioWorkletProcessor {
     };
 
     // RIFF header
-    writeString(0, 'RIFF');
+    writeString(0, "RIFF");
     writeUint32(4, 36 + length * 2);
-    writeString(8, 'WAVE');
+    writeString(8, "WAVE");
 
     // fmt chunk
-    writeString(12, 'fmt ');
+    writeString(12, "fmt ");
     writeUint32(16, 16); // chunk size
     writeUint16(20, 1); // PCM format
     writeUint16(22, 1); // mono
@@ -179,14 +185,14 @@ class VADProcessor extends AudioWorkletProcessor {
     writeUint16(34, 16); // bits per sample
 
     // data chunk
-    writeString(36, 'data');
+    writeString(36, "data");
     writeUint32(40, length * 2);
 
     // Convert float samples to 16-bit PCM
     let offset = 44;
     for (let i = 0; i < length; i++) {
       const sample = Math.max(-1, Math.min(1, samples[i]));
-      view.setInt16(offset, sample * 0x7FFF, true);
+      view.setInt16(offset, sample * 0x7fff, true);
       offset += 2;
     }
 
@@ -201,7 +207,7 @@ class VADProcessor extends AudioWorkletProcessor {
   sendMessage(type, data = {}) {
     this.port.postMessage({
       type,
-      ...data
+      ...data,
     });
   }
 
@@ -215,4 +221,4 @@ class VADProcessor extends AudioWorkletProcessor {
 }
 
 // Register the processor
-registerProcessor('vad-processor', VADProcessor);
+registerProcessor("vad-processor", VADProcessor);

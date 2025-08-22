@@ -1,36 +1,36 @@
 export interface ActionElement {
   id: string;
-  selector: string;
   type:
-  | "input"
-  | "textarea"
-  | "select"
-  | "button"
-  | "link"
-  | "checkbox"
-  | "radio"
-  | "range"
-  | "file"
-  | "color"
-  | "date"
-  | "datetime-local"
-  | "email"
-  | "month"
-  | "number"
-  | "password"
-  | "search"
-  | "tel"
-  | "text"
-  | "time"
-  | "url"
-  | "week";
+    | "input"
+    | "textarea"
+    | "select"
+    | "button"
+    | "link"
+    | "checkbox"
+    | "radio"
+    | "range"
+    | "file"
+    | "color"
+    | "date"
+    | "datetime-local"
+    | "email"
+    | "month"
+    | "number"
+    | "password"
+    | "search"
+    | "tel"
+    | "text"
+    | "time"
+    | "url"
+    | "week";
   label?: string;
   order?: number;
   value?: string;
-  ref?: React.RefObject<HTMLElement>;
   metadata?: Record<string, any>;
   affectsPersistentState?: boolean;
   demoHandler?: () => void | Promise<void>;
+  isVariable?: boolean;
+  variableDataAttribute?: string;
 }
 
 export interface ExecFunctionResult {
@@ -43,8 +43,13 @@ export interface UserInfoDisplayEvent extends ExecFunctionResult {
   actionId: string;
 }
 
-export type InformationalFunction = () => ExecFunctionResult | Promise<ExecFunctionResult>;
-export type ActionCacheFunction = (actionId: string, steps: ActionStep[]) => Promise<Record<string, any>>;
+export type InformationalFunction = () =>
+  | ExecFunctionResult
+  | Promise<ExecFunctionResult>;
+export type ActionCacheFunction = (
+  actionId: string,
+  steps: ActionStep[]
+) => Promise<Record<string, any>>;
 
 export interface Action {
   actionId: string;
@@ -60,12 +65,13 @@ export interface Action {
 export interface ActionStep {
   type: string;
   elementId?: string;
+  domElementId?: string;
   value?: string;
   url?: string;
   delay?: number;
 }
 
-export interface ExecutionState {
+export interface ExecutionStatus {
   actionId: string | null;
   status: "idle" | "executing" | "paused" | "completed";
   currentActionIndex: number;
@@ -110,3 +116,30 @@ export interface VoiceSegment {
 }
 
 export type ValidActionId = string;
+
+export interface CachedActionStep {
+  type: string;
+  domElementId: string;
+  isVariable: boolean;
+  value?: string;
+}
+
+export interface CachedAction {
+  actionId: string;
+  steps: CachedActionStep[];
+}
+
+export interface VariableElementSearchItem {
+  elementId: string;
+  searchableContent: string; // label + metadata combined
+  element: ActionElement;
+}
+
+export interface ActionHtmlElement {
+  elementId: string;
+  htmlElement: HTMLElement;
+}
+
+export interface VoiceEngineConfig {
+  geminiApiKey: string;
+}

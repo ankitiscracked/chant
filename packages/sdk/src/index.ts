@@ -31,7 +31,7 @@ export type {
   ActionElement,
   Action,
   ActionStep as ActionSteps,
-  ExecutionState,
+  ExecutionStatus as ExecutionState,
   VADConfig,
   VADOptions,
   VADStrategy,

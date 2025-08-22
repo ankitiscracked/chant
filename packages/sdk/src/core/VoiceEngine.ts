@@ -1,27 +1,26 @@
-import {
-  GoogleGenAI,
-  createUserContent,
-  createPartFromUri,
-} from "@google/genai";
+import { GoogleGenAI, createUserContent } from "@google/genai";
+import { ActionCacheService } from "../services/ActionCacheService";
 import type {
-  ActionElement,
   Action,
+  ActionElement,
   ActionStep,
-  ExecutionState,
-  VoiceListenerState,
-  ValidActionId,
-  ExecFunctionResult,
+  ExecutionStatus,
   UserInfoDisplayEvent,
+  ValidActionId,
+  VoiceListenerState,
+  ActionHtmlElement,
+  VoiceEngineConfig,
 } from "../types";
 import { ActionDispatcher } from "./ActionDispatcher";
-import { ActionCacheService } from "../services/ActionCacheService";
 import { EventBus } from "./EventBus";
+
+import ExecutionState from "./ExecutionState";
 
 export class VoiceEngine {
   private elementsByAction = new Map<string, ActionElement[]>();
   private actions = new Map<string, Action>();
   private currentRoute = "/";
-  private executionState: ExecutionState = {
+  private executionState: ExecutionStatus = {
     actionId: null,
     status: "idle",
     currentActionIndex: 0,
@@ -32,6 +31,7 @@ export class VoiceEngine {
     transcript: "",
   };
   private actionCacheService = new ActionCacheService();
+  private geminiApiKey: string;
 
   getActionIds() {
     return Array.from(this.actions.keys());
@@ -49,7 +49,12 @@ export class VoiceEngine {
     return Array.from(this.elementsByAction.get(actionId) || []);
   }
 
-  constructor() {}
+  constructor(config: VoiceEngineConfig) {
+    if (!config.geminiApiKey) {
+      throw new Error("geminiApiKey is required in VoiceEngine constructor");
+    }
+    this.geminiApiKey = config.geminiApiKey;
+  }
 
   // Event management methods for compatibility
   addEventListener(
@@ -73,7 +78,7 @@ export class VoiceEngine {
   }
 
   // State management
-  getExecutionState(): ExecutionState {
+  getExecutionState(): ExecutionStatus {
     return { ...this.executionState };
   }
 
@@ -81,7 +86,7 @@ export class VoiceEngine {
     return { ...this.voiceListenerState };
   }
 
-  updateExecutionState(updates: Partial<ExecutionState>) {
+  updateExecutionState(updates: Partial<ExecutionStatus>) {
     this.executionState = { ...this.executionState, ...updates };
     EventBus.getInstance().dispatchEvent(
       new CustomEvent("executionStateChange", {
@@ -119,6 +124,9 @@ export class VoiceEngine {
     actionId: string,
     actions: ActionStep[]
   ) {
+    // Reset execution state for new action execution
+    ExecutionState.reset();
+
     this.updateExecutionState({
       status: "executing",
       currentActionIndex: 0,
@@ -136,7 +144,7 @@ export class VoiceEngine {
     const actionDispatcher = new ActionDispatcher(elements, this, () =>
       this.getExecutionState()
     );
-    await actionDispatcher.executeActions(actions);
+    await actionDispatcher.executeActions(actionId, actions);
   }
 
   // Execute informational function
@@ -189,6 +197,26 @@ export class VoiceEngine {
       ...(this.elementsByAction.get(actionId) || []),
       actionElement,
     ]);
+    console.log("all registered elements: ", this.elementsByAction);
+  }
+
+  captureHtmlElement(actionId: string, actionHtmlElement: ActionHtmlElement) {
+    ExecutionState.captureHtmlElement(actionId, actionHtmlElement);
+    const elementsLength = this.elementsByAction.get(actionId)?.length;
+    const htmlElementsLength =
+      ExecutionState.getHtmlElementsByAction(actionId)?.length;
+    if (elementsLength === htmlElementsLength) {
+      console.log(
+        "marking execution state as ready for action, actionId: ",
+        actionId
+      );
+      ExecutionState.done();
+    }
+  }
+
+  removeHtmlElement(actionId: string, elementId: string) {
+    console.log("removing html element", elementId);
+    ExecutionState.removeHtmlElement(actionId, elementId);
   }
 
   registerAction(action: Action) {
@@ -208,6 +236,7 @@ export class VoiceEngine {
     actionId: ValidActionId,
     element: Pick<ActionElement, "id">
   ) {
+    console.log("unregistering element", element);
     const elements = this.elementsByAction.get(actionId);
     if (!elements) return;
 
@@ -247,17 +276,11 @@ export class VoiceEngine {
   }
 
   // Multimodal intent resolution using audio
-  private async resolveIntentFromAudio(
-    audioBase64: string
-  ): Promise<{
+  private async resolveIntentFromAudio(audioBase64: string): Promise<{
     actionId: string | null;
     transcription: string;
     isDemoMode?: boolean;
   }> {
-    const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-      throw new Error("VITE_GEMINI_API_KEY environment variable is required");
-    }
 
     const availableActions = this.getAllActions();
     if (availableActions.length === 0) {
@@ -298,7 +321,7 @@ Examples:
 {"transcription": "hello there", "actionId": null, "isDemoMode": false}`;
 
     try {
-      const client = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+      const client = new GoogleGenAI({ apiKey: this.geminiApiKey });
       const response = await client.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [
@@ -417,12 +440,8 @@ Examples:
 
   // Transcription
   async transcribeAudio(audioBase64: string): Promise<string> {
-    const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-      throw new Error("VITE_GEMINI_API_KEY environment variable is required");
-    }
 
-    const client = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    const client = new GoogleGenAI({ apiKey: this.geminiApiKey });
     const response = await client.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
@@ -465,39 +484,33 @@ Examples:
     transcript: string
   ): Promise<ActionStep[]> {
     const action = this.actions.get(actionId);
+    const actionElements = this.elementsByAction.get(actionId);
 
     // Check for cached actions first
     try {
-      const cachedActions = await this.actionCacheService.findCachedAction(
-        action
+      const cachedActionSteps = await ActionCacheService.retrieveCachedAction(
+        actionId,
+        actionElements!,
+        transcript
       );
-      if (cachedActions.length > 0) {
-        console.log(
-          "Found cached actions for",
-          actionId,
-          ":",
-          cachedActions[0].steps
-        );
-        return cachedActions[0].steps;
+      if (cachedActionSteps && cachedActionSteps.length > 0) {
+        console.log("Found cached actions for", actionId, ":");
+        return cachedActionSteps;
       }
     } catch (error) {
       console.warn("Error checking cached actions:", error);
     }
 
     // Get elements specifically registered for this action
-    const actionElements = this.elementsByAction.get(actionId);
     const elementsData = actionElements
       ? Array.from(actionElements.values()).map((el) => ({
           id: el.id,
           type: el.type,
           label: el.label,
-          selector: el.selector,
           metadata: el.metadata || {},
           affectsPersistentState: el.affectsPersistentState || false,
           hasDemoHandler: !!el.demoHandler,
-          value: el.ref?.current
-            ? (el.ref.current as HTMLInputElement).value || ""
-            : "",
+          value: el.value,
         }))
       : [];
 
@@ -555,12 +568,8 @@ Supported action types: setValue, click, focus, wait, navigate
 REMEMBER: Only generate actions for elements that match the voice command. Do not generate actions for unrelated elements.
 `;
 
-    const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-      throw new Error("VITE_GEMINI_API_KEY environment variable is required");
-    }
 
-    const client = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+    const client = new GoogleGenAI({ apiKey: this.geminiApiKey });
     const response = await client.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
@@ -654,7 +663,7 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
       const nameMatch = transcriptLower.match(
         /(?:my name is|i am|call me)\s+([a-z]+(?:\s+[a-z]+)?)/
       );
-      if (nameMatch) return nameMatch[1];
+      if (nameMatch) return nameMatch[1]!;
 
       if (label.includes("first") || id.includes("first")) return "John";
       if (label.includes("last") || id.includes("last")) return "Doe";
@@ -687,7 +696,7 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
       const ageMatch = transcriptLower.match(
         /\b(\d{1,3})\s*(?:years?\s*old|year|age)/
       );
-      if (ageMatch) return ageMatch[1];
+      if (ageMatch) return ageMatch[1]!;
       return "25";
     }
 
@@ -695,7 +704,7 @@ REMEMBER: Only generate actions for elements that match the voice command. Do no
     if (element.type === "email") return "user@example.com";
     if (element.type === "tel") return "+1234567890";
     if (element.type === "number") return "1";
-    if (element.type === "date") return new Date().toISOString().split("T")[0];
+    if (element.type === "date") return new Date().toISOString().split("T")[0]!;
 
     // Last resort: return a generic meaningful value
     return "Sample Value";

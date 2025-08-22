@@ -57,39 +57,6 @@ export function Example2() {
     priority: "Medium" as const,
   });
 
-  const createTicketBtnRef = useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
-    selector: "[data-testid='create-ticket-btn']",
-    type: "button",
-    label: "Create Ticket",
-  });
-
-  const ticketTitleRef = useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
-    selector: "#ticket-title",
-    type: "input",
-    label: "Ticket Title",
-  });
-
-  const ticketDescriptionRef = useVoiceElement(
-    CREATE_SUPPORT_TICKET_ACTION_ID,
-    {
-      selector: "#ticket-description",
-      type: "textarea",
-      label: "Ticket Description",
-    }
-  );
-
-  const ticketPriorityRef = useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
-    selector: "#ticket-priority",
-    type: "select",
-    label: "Ticket Priority",
-  });
-
-  const submitTicketBtnRef = useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
-    selector: "#submit-ticket-btn",
-    type: "button",
-    label: "Submit Ticket",
-  });
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -109,7 +76,7 @@ export function Example2() {
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">Support Tickets</h1>
           <p className="text-lg text-muted-foreground">
@@ -120,11 +87,15 @@ export function Example2() {
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button
-              ref={createTicketBtnRef}
+              id="create-ticket-btn"
+              ref={useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
+                type: "button",
+                label: "Create Ticket",
+              })}
               data-testid="create-ticket-btn"
               className="flex items-center gap-2"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="w-4 h-4" />
               Create Ticket
             </Button>
           </DialogTrigger>
@@ -141,13 +112,16 @@ export function Example2() {
               <div>
                 <label
                   htmlFor="title"
-                  className="block text-sm font-medium mb-2"
+                  className="block mb-2 text-sm font-medium"
                 >
                   Title *
                 </label>
                 <Input
-                  ref={ticketTitleRef}
                   id="ticket-title"
+                  ref={useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
+                    type: "input",
+                    label: "Ticket Title",
+                  })}
                   value={formData.title}
                   onChange={(e) =>
                     setFormData((prev) => ({ ...prev, title: e.target.value }))
@@ -160,12 +134,15 @@ export function Example2() {
               <div>
                 <label
                   htmlFor="description"
-                  className="block text-sm font-medium mb-2"
+                  className="block mb-2 text-sm font-medium"
                 >
                   Description *
                 </label>
                 <textarea
-                  ref={ticketDescriptionRef}
+                  ref={useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
+                    type: "textarea",
+                    label: "Ticket Description",
+                  })}
                   id="ticket-description"
                   value={formData.description}
                   onChange={(e) =>
@@ -183,12 +160,15 @@ export function Example2() {
               <div>
                 <label
                   htmlFor="priority"
-                  className="block text-sm font-medium mb-2"
+                  className="block mb-2 text-sm font-medium"
                 >
                   Priority
                 </label>
                 <select
-                  ref={ticketPriorityRef}
+                  ref={useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
+                    type: "select",
+                    label: "Ticket Priority",
+                  })}
                   id="ticket-priority"
                   value={formData.priority}
                   onChange={(e) =>
@@ -197,7 +177,7 @@ export function Example2() {
                       priority: e.target.value as "Low" | "Medium" | "High",
                     }))
                   }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full h-10 px-3 py-2 text-sm border rounded-md border-input bg-background ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="Low">Low</option>
                   <option value="Medium">Medium</option>
@@ -214,7 +194,10 @@ export function Example2() {
                   Cancel
                 </Button>
                 <Button
-                  ref={submitTicketBtnRef}
+                  ref={useVoiceElement(CREATE_SUPPORT_TICKET_ACTION_ID, {
+                    type: "button",
+                    label: "Submit Ticket",
+                  })}
                   id="submit-ticket-btn"
                   type="submit"
                 >
@@ -226,7 +209,7 @@ export function Example2() {
         </Dialog>
       </div>
 
-      <div className="bg-card border rounded-lg">
+      <div className="border rounded-lg bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -251,24 +234,26 @@ export function Example2() {
                 </TableCell>
                 <TableCell>
                   <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ticket.priority === "High"
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      ticket.priority === "High"
                         ? "bg-red-100 text-red-800"
                         : ticket.priority === "Medium"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-green-100 text-green-800"
-                      }`}
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-green-100 text-green-800"
+                    }`}
                   >
                     {ticket.priority}
                   </span>
                 </TableCell>
                 <TableCell>
                   <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${ticket.status === "Open"
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      ticket.status === "Open"
                         ? "bg-blue-100 text-blue-800"
                         : ticket.status === "In Progress"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}
                   >
                     {ticket.status}
                   </span>

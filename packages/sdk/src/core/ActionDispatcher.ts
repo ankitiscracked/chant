@@ -1,27 +1,39 @@
-import type { ActionStep, ActionElement, ExecutionState, ActionCacheFunction } from "../types";
+import type {
+  ActionStep,
+  ActionElement,
+  ActionHtmlElement,
+  ExecutionStatus,
+  ActionCacheFunction,
+} from "../types";
 import { EventBus } from "./EventBus";
+import ExecutionState from "./ExecutionState";
 
 interface ExecutionStateUpdater {
-  updateExecutionState(updates: Partial<ExecutionState>): void;
+  updateExecutionState(updates: Partial<ExecutionStatus>): void;
 }
 
 export class ActionDispatcher {
   private elements: Map<string, ActionElement>;
   private stateUpdater: ExecutionStateUpdater;
-  private getExecutionState: () => ExecutionState;
-  private actionCacheFunction?: ActionCacheFunction;
+  private getExecutionState: () => ExecutionStatus;
 
-  constructor(elements: Map<string, ActionElement>, stateUpdater: ExecutionStateUpdater, getExecutionState: () => ExecutionState, cacheFunction?: ActionCacheFunction) {
+  constructor(
+    elements: Map<string, ActionElement>,
+    stateUpdater: ExecutionStateUpdater,
+    getExecutionState: () => ExecutionStatus
+  ) {
     this.elements = elements;
     this.stateUpdater = stateUpdater;
     this.getExecutionState = getExecutionState;
-    this.actionCacheFunction = cacheFunction;
   }
 
-  private getElementRef(elementId: string): HTMLElement | null {
-    const voiceElement = this.elements.get(elementId);
-    if (!voiceElement?.ref?.current) return null;
-    return voiceElement.ref.current;
+  private getElementRef(
+    actionId: string,
+    elementId: string
+  ): HTMLElement | undefined {
+    return ExecutionState.getHtmlElementsByAction(actionId).find(
+      (el) => el.elementId === elementId
+    )?.htmlElement;
   }
 
   private findNextRequiredInput(
@@ -46,25 +58,27 @@ export class ActionDispatcher {
   }
 
   async executeActions(
-    actions: ActionStep[],
+    actionId: string,
+    actionSteps: ActionStep[],
     pauseOnRequiredField: boolean = false
   ): Promise<void> {
-    console.log("Executing actions:", actions);
+    console.log("Executing actions:", actionSteps);
 
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
+    for (let i = 0; i < actionSteps.length; i++) {
+      const step = actionSteps[i];
 
       try {
-        console.log("Executing action:", action);
+        console.log("Executing action:", step);
         const pauseInfo = await this.executeAction(
-          action,
+          actionId,
+          step!,
           pauseOnRequiredField
         );
-        console.log("Action completed:", action);
+        console.log("Action completed:", step);
 
         if (pauseInfo) {
           console.log("Action execution paused due to:", pauseInfo);
-          const remainingActions = actions.slice(i + 1);
+          const remainingActions = actionSteps.slice(i + 1);
           this.stateUpdater.updateExecutionState({
             status: "paused",
             pausedAt: i,
@@ -74,9 +88,9 @@ export class ActionDispatcher {
           return;
         }
       } catch (error) {
-        console.error(`Failed to execute action ${action.type}:`, error);
+        console.error(`Failed to execute action ${step!.type}:`, error);
       }
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
     this.stateUpdater.updateExecutionState({
@@ -86,33 +100,59 @@ export class ActionDispatcher {
     });
 
     // Dispatch event to trigger success dialog
-    console.log("About to dispatch actionsCompleted event with actions:", actions);
+    console.log(
+      "About to dispatch actionsCompleted event with actions:",
+      actionSteps
+    );
     EventBus.getInstance().dispatchEvent(
       new CustomEvent("actionsCompleted", {
-        detail: { actions }
+        detail: { actions: actionSteps },
       })
     );
     console.log("actionsCompleted event dispatched");
   }
 
   private async executeAction(
+    actionId: string,
     actionStep: ActionStep,
     pauseOnRequiredField: boolean
   ): Promise<{ elementId: string; label?: string; reason: string } | null> {
-    const element = actionStep.elementId
-      ? this.getElementRef(actionStep.elementId)
-      : null;
+    let element;
+
+    if (actionStep.elementId) {
+      element = this.getElementRef(actionId, actionStep.elementId);
+      if (!element) {
+        await ExecutionState.waitUntilReady();
+        element = this.getElementRef(actionId, actionStep.elementId);
+      }
+    }
+
+    if (actionStep.domElementId) {
+      element = document.getElementById(actionStep.domElementId);
+    }
+
+    if (!element) {
+      console.log(`Action ${actionStep.type} - Element not found:`, element);
+      return null;
+    }
+
     console.log(`Action ${actionStep.type} - Element found:`, element);
 
     // Check if we're in demo mode and this element affects persistent state
     const executionState = this.getExecutionState();
-    const voiceElement = actionStep.elementId ? this.elements.get(actionStep.elementId) : null;
+    const voiceElement = actionStep.elementId
+      ? this.elements.get(actionStep.elementId)
+      : null;
 
     if (executionState.isDemoMode && voiceElement?.affectsPersistentState) {
-      console.log("Demo mode: executing demo handler for persistent state element");
+      console.log(
+        "Demo mode: executing demo handler for persistent state element"
+      );
 
       if (!voiceElement.demoHandler) {
-        throw new Error(`Demo mode error: Element ${actionStep.elementId} affects persistent state but no demoHandler is provided`);
+        throw new Error(
+          `Demo mode error: Element ${actionStep.elementId} affects persistent state but no demoHandler is provided`
+        );
       }
 
       try {
@@ -164,21 +204,28 @@ export class ActionDispatcher {
 
           // Check if element is now valid or if there's a next required field (only if pauseOnRequiredField is true)
           if (pauseOnRequiredField) {
-            const formElement = element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-            if (formElement.hasAttribute("required") && !formElement.checkValidity()) {
+            const formElement = element as
+              | HTMLInputElement
+              | HTMLTextAreaElement
+              | HTMLSelectElement;
+            if (
+              formElement.hasAttribute("required") &&
+              !formElement.checkValidity()
+            ) {
               return {
                 elementId: actionStep.elementId!,
                 label: this.getElementLabel(actionStep.elementId!),
-                reason: formElement.validationMessage || "Field validation failed",
+                reason:
+                  formElement.validationMessage || "Field validation failed",
               };
             }
 
             // Check for next required field
             const nextRequired = this.findNextRequiredInput(formElement);
             if (nextRequired) {
-              const nextElementId = Array.from(this.elements.entries()).find(
-                ([_, el]) => el.ref?.current === nextRequired
-              )?.[0];
+              const nextElementId = ExecutionState.getHtmlElementsByAction(
+                actionId
+              ).find((el) => el.htmlElement === nextRequired)?.elementId;
 
               if (nextElementId) {
                 nextRequired.focus();

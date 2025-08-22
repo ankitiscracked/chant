@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { ActionCacheService } from '../services/ActionCacheService';
-import { useVoiceEngine } from '../context/VoiceEngineContext';
-import type { ActionStep, Action } from '../types';
-import { EventBus } from '../core/EventBus';
+import { useEffect, useState } from "react";
+import { useVoiceEngine } from "../context/VoiceEngineContext";
+import { EventBus } from "../core/EventBus";
+import { ActionCacheService } from "../services/ActionCacheService";
+import type { ActionStep } from "../types";
 
 export interface ActionSuccessFlowState {
   showSuccessFlow: boolean;
@@ -30,18 +30,21 @@ export interface ActionSuccessFlowActions {
 
 const actionCacheService = new ActionCacheService();
 
-export function useActionSuccessFlow(): [ActionSuccessFlowState, ActionSuccessFlowActions] {
+export function useActionSuccessFlow(): [
+  ActionSuccessFlowState,
+  ActionSuccessFlowActions
+] {
   const voiceEngine = useVoiceEngine();
 
   const [state, setState] = useState<ActionSuccessFlowState>({
     showSuccessFlow: false,
     showTriggerSuggestions: false,
     currentActionId: null,
-    currentActionDescription: '',
-    currentTranscript: '',
+    currentActionDescription: "",
+    currentTranscript: "",
     currentSteps: [],
     availableTriggers: [],
-    waitingForFeedback: false
+    waitingForFeedback: false,
   });
 
   const handleActionCompleted = (
@@ -50,7 +53,7 @@ export function useActionSuccessFlow(): [ActionSuccessFlowState, ActionSuccessFl
     transcript: string,
     steps: ActionStep[]
   ) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       showSuccessFlow: true,
       showTriggerSuggestions: false,
@@ -59,7 +62,7 @@ export function useActionSuccessFlow(): [ActionSuccessFlowState, ActionSuccessFl
       currentTranscript: transcript,
       currentSteps: steps,
       availableTriggers: [],
-      waitingForFeedback: true
+      waitingForFeedback: true,
     }));
   };
 
@@ -67,83 +70,85 @@ export function useActionSuccessFlow(): [ActionSuccessFlowState, ActionSuccessFl
     if (state.currentActionId && state.currentSteps.length > 0) {
       try {
         const action = voiceEngine.getActions().get(state.currentActionId!);
-        const actionElements = voiceEngine.getElementsByActionId(state.currentActionId);
+        const actionElements = voiceEngine.getElementsByActionId(
+          state.currentActionId
+        );
         await actionCacheService.cacheSuccessfulAction(
           action!,
           actionElements,
-          state.currentSteps,
+          state.currentSteps
         );
-        console.log('Action cached successfully:', state.currentActionId);
       } catch (error) {
-        console.error('Failed to cache action:', error);
+        console.error("Failed to cache action:", error);
       }
     }
 
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       showSuccessFlow: false,
       currentActionId: null,
-      currentActionDescription: '',
-      currentTranscript: '',
+      currentActionDescription: "",
+      currentTranscript: "",
       currentSteps: [],
       availableTriggers: [],
-      waitingForFeedback: false
+      waitingForFeedback: false,
     }));
   };
 
   const handleFailure = (availableTriggers: string[]) => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       showSuccessFlow: false,
       showTriggerSuggestions: true,
       availableTriggers,
-      waitingForFeedback: false
+      waitingForFeedback: false,
     }));
   };
 
   const handleRetry = (trigger: string) => {
     // Dispatch custom event for voice engine to handle retry
-    const retryEvent = new CustomEvent('actionRetry', {
+    const retryEvent = new CustomEvent("actionRetry", {
       detail: {
         actionId: state.currentActionId,
         suggestedTrigger: trigger,
-        originalTranscript: state.currentTranscript
-      }
+        originalTranscript: state.currentTranscript,
+      },
     });
     window.dispatchEvent(retryEvent);
 
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       showSuccessFlow: false,
       showTriggerSuggestions: false,
       currentActionId: null,
-      currentActionDescription: '',
-      currentTranscript: '',
+      currentActionDescription: "",
+      currentTranscript: "",
       currentSteps: [],
       availableTriggers: [],
-      waitingForFeedback: false
+      waitingForFeedback: false,
     }));
   };
 
   const dismissDialogs = () => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       showSuccessFlow: false,
       showTriggerSuggestions: false,
       currentActionId: null,
-      currentActionDescription: '',
-      currentTranscript: '',
+      currentActionDescription: "",
+      currentTranscript: "",
       currentSteps: [],
       availableTriggers: [],
-      waitingForFeedback: false
+      waitingForFeedback: false,
     }));
   };
 
   // Register for action completed events
   useEffect(() => {
-    const handleActionsCompleted = (event: CustomEvent) => {
-      console.log("actionsCompleted event received:", event.detail);
-      const { actions } = event.detail;
+    const handleActionsCompleted = (event: Event) => {
+      const customEvent = event as CustomEvent<any>;
+      console.log("actionsCompleted event received:", customEvent.detail);
+      const { actions } = customEvent.detail;
       // Get current execution state to find the action
       const executionState = voiceEngine.getExecutionState();
       const voiceListenerState = voiceEngine.getVoiceListenerState();
@@ -162,11 +167,17 @@ export function useActionSuccessFlow(): [ActionSuccessFlowState, ActionSuccessFl
     };
 
     console.log("Registering actionsCompleted event listener");
-    EventBus.getInstance().addEventListener("actionsCompleted", handleActionsCompleted);
+    EventBus.getInstance().addEventListener(
+      "actionsCompleted",
+      handleActionsCompleted
+    );
 
     return () => {
       console.log("Unregistering actionsCompleted event listener");
-      EventBus.getInstance().removeEventListener("actionsCompleted", handleActionsCompleted);
+      EventBus.getInstance().removeEventListener(
+        "actionsCompleted",
+        handleActionsCompleted
+      );
     };
   }, [voiceEngine]);
 
@@ -177,8 +188,8 @@ export function useActionSuccessFlow(): [ActionSuccessFlowState, ActionSuccessFl
       handleSuccess,
       handleFailure,
       handleRetry,
-      dismissDialogs
-    }
+      dismissDialogs,
+    },
   ];
 }
 

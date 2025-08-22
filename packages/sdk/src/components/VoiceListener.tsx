@@ -196,7 +196,7 @@ interface StateConfig {
 
 export function VoiceListener() {
   const voiceEngine = useVoiceEngine();
-  
+
   const [hasActions, setHasActions] = useState(true);
   const [currentRoute, setCurrentRoute] = useState(window.location.pathname);
   const [showNoMatchWarning, setShowNoMatchWarning] = useState(false);
@@ -224,23 +224,36 @@ export function VoiceListener() {
 
   // Listen for warning events from voice engine
   useEffect(() => {
-    const handleNoMatchWarning = (event: CustomEvent) => {
-      setLastTranscript(event.detail.transcript || "");
+    const handleNoMatchWarning = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      setLastTranscript(customEvent.detail.transcript || "");
       setShowNoMatchWarning(true);
       setTimeout(() => setShowNoMatchWarning(false), 4000);
     };
 
-    const handleNoElementsWarning = (event: CustomEvent) => {
+    const handleNoElementsWarning = (event: Event) => {
       setShowNoElementsWarning(true);
       setTimeout(() => setShowNoElementsWarning(false), 4000);
     };
 
-    EventBus.getInstance().addEventListener("noMatchWarning", handleNoMatchWarning);
-    EventBus.getInstance().addEventListener("noElementsWarning", handleNoElementsWarning);
+    EventBus.getInstance().addEventListener(
+      "noMatchWarning",
+      handleNoMatchWarning
+    );
+    EventBus.getInstance().addEventListener(
+      "noElementsWarning",
+      handleNoElementsWarning
+    );
 
     return () => {
-      EventBus.getInstance().removeEventListener("noMatchWarning", handleNoMatchWarning);
-      EventBus.getInstance().removeEventListener("noElementsWarning", handleNoElementsWarning);
+      EventBus.getInstance().removeEventListener(
+        "noMatchWarning",
+        handleNoMatchWarning
+      );
+      EventBus.getInstance().removeEventListener(
+        "noElementsWarning",
+        handleNoElementsWarning
+      );
     };
   }, []);
 
@@ -255,7 +268,10 @@ export function VoiceListener() {
     window.addEventListener("actionRetry", handleActionRetry as EventListener);
 
     return () => {
-      window.removeEventListener("actionRetry", handleActionRetry as EventListener);
+      window.removeEventListener(
+        "actionRetry",
+        handleActionRetry as EventListener
+      );
     };
   }, []);
 
@@ -375,24 +391,30 @@ export function VoiceListener() {
   const isIdle = !enabled;
   console.log("voice listener state", voiceListenerState);
 
-
   // Check if we have additional info to show
   const hasTranscript = transcript || voiceListenerState.transcript;
   const hasPauseInfo = isPaused && executionState.waitingForElement;
   const hasNoActions = !hasActions;
   const hasWarnings = showNoMatchWarning || showNoElementsWarning;
   const hasUserInfo = isVisible && displayData;
-  const hasSuccessFlow = successFlowState.showSuccessFlow || successFlowState.showTriggerSuggestions;
-  const hasAdditionalInfo = hasTranscript || hasPauseInfo || hasNoActions || hasWarnings || hasUserInfo || hasSuccessFlow;
+  const hasSuccessFlow =
+    successFlowState.showSuccessFlow || successFlowState.showTriggerSuggestions;
+  const hasAdditionalInfo =
+    hasTranscript ||
+    hasPauseInfo ||
+    hasNoActions ||
+    hasWarnings ||
+    hasUserInfo ||
+    hasSuccessFlow;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed z-50 bottom-6 right-6">
       {/* Additional info above the main button */}
       {!isIdle && hasAdditionalInfo && (
-        <div className="mb-3 bg-card text-card-foreground border border-border rounded-lg p-3 max-w-xs shadow-lg max-h-96 overflow-y-auto">
+        <div className="max-w-xs p-3 mb-3 overflow-y-auto border rounded-lg shadow-lg bg-card text-card-foreground border-border max-h-96">
           {hasTranscript && (
             <div className="mb-2">
-              <div className="text-xs font-medium text-muted-foreground mb-1">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">
                 Transcript
               </div>
               <div className="text-sm">"{hasTranscript}"</div>
@@ -401,16 +423,16 @@ export function VoiceListener() {
 
           {hasPauseInfo && (
             <div className="mb-2">
-              <div className="text-xs font-medium text-muted-foreground mb-1">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">
                 Waiting for input
               </div>
               <div className="text-sm font-medium">
                 {executionState.waitingForElement?.label}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
+              <div className="mt-1 text-xs text-muted-foreground">
                 {executionState.waitingForElement?.reason}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
+              <div className="mt-1 text-xs text-muted-foreground">
                 Say "continue" or "next" when ready
               </div>
             </div>
@@ -418,13 +440,13 @@ export function VoiceListener() {
 
           {hasNoActions && (
             <div>
-              <div className="text-xs font-medium text-muted-foreground mb-1">
+              <div className="mb-1 text-xs font-medium text-muted-foreground">
                 No actions available
               </div>
               <div className="text-sm">
                 No voice actions registered for this route
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
+              <div className="mt-1 text-xs text-muted-foreground">
                 Current route: {currentRoute}
               </div>
             </div>
@@ -432,13 +454,11 @@ export function VoiceListener() {
 
           {showNoMatchWarning && (
             <div>
-              <div className="text-xs font-medium text-red-500 mb-1">
+              <div className="mb-1 text-xs font-medium text-red-500">
                 Voice command not recognized
               </div>
-              <div className="text-sm">
-                "{lastTranscript}"
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
+              <div className="text-sm">"{lastTranscript}"</div>
+              <div className="mt-1 text-xs text-muted-foreground">
                 No matching action found for this command
               </div>
             </div>
@@ -446,13 +466,13 @@ export function VoiceListener() {
 
           {showNoElementsWarning && (
             <div className="mb-2">
-              <div className="text-xs font-medium text-yellow-600 mb-1">
+              <div className="mb-1 text-xs font-medium text-yellow-600">
                 No interactive elements
               </div>
               <div className="text-sm">
                 Action matched but no elements registered
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
+              <div className="mt-1 text-xs text-muted-foreground">
                 Please ensure UI elements are properly registered
               </div>
             </div>
@@ -469,7 +489,9 @@ export function VoiceListener() {
               actionDescription={successFlowState.currentActionDescription}
               onSuccess={successFlowActions.handleSuccess}
               onFailure={() => {
-                const action = voiceEngine.getActions().get(successFlowState.currentActionId!);
+                const action = voiceEngine
+                  .getActions()
+                  .get(successFlowState.currentActionId!);
                 const triggers = action?.voice_triggers || [];
                 successFlowActions.handleFailure(triggers);
               }}
@@ -496,10 +518,11 @@ export function VoiceListener() {
     flex items-center overflow-hidden
     transition-[width,border-radius,padding,box-shadow]
     ${isIdle ? "duration-150 ease-out" : "duration-200 ease-in-out"}
-    ${isIdle
-              ? "w-12 hover:w-max h-12 rounded-full hover:rounded-2xl px-0 hover:px-3 py-0 justify-center hover:justify-start"
-              : "w-max h-12 rounded-2xl px-4 py-3 space-x-3"
-            }
+    ${
+      isIdle
+        ? "w-12 hover:w-max h-12 rounded-full hover:rounded-2xl px-0 hover:px-3 py-0 justify-center hover:justify-start"
+        : "w-max h-12 rounded-2xl px-4 py-3 space-x-3"
+    }
     ${stateConfig.className}
   `}
           onClick={isIdle ? start : undefined}
@@ -512,10 +535,11 @@ export function VoiceListener() {
       text-sm font-medium whitespace-nowrap
       transition-opacity
       ${isIdle ? "duration-150 ease-out" : "duration-200 ease-in-out"}
-      ${isIdle
-                ? "w-0 opacity-0 group-hover:opacity-100 group-hover:w-auto"
-                : "w-auto opacity-100"
-              }
+      ${
+        isIdle
+          ? "w-0 opacity-0 group-hover:opacity-100 group-hover:w-auto"
+          : "w-auto opacity-100"
+      }
     `}
           >
             {stateConfig.label}
@@ -525,11 +549,7 @@ export function VoiceListener() {
           {voiceListenerState.status === "listening" && (
             <button
               onClick={stop}
-              className="
-        cursor-pointer flex-shrink-0 w-6 h-6 bg-gray-800 text-white 
-        rounded-full flex items-center justify-center
-        transition-colors duration-200 ease-in-out
-      "
+              className="flex items-center justify-center flex-shrink-0 w-6 h-6 text-white transition-colors duration-200 ease-in-out bg-gray-800 rounded-full cursor-pointer "
             >
               <svg
                 width="12"
@@ -557,7 +577,6 @@ export function VoiceListener() {
           Powered by Chant
         </a>
       </div>
-
     </div>
   );
 }

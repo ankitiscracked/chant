@@ -1,32 +1,41 @@
-import { type ActionStep, type Action, type ActionElement } from "../types";
-import stringify from "fast-json-stable-stringify";
+import MiniSearch from "minisearch";
+import {
+  type ActionStep,
+  type Action,
+  type ActionElement,
+  type CachedActionStep,
+  type VariableElementSearchItem,
+  type ActionHtmlElement,
+} from "../types";
+import _ from "lodash";
+
+import ExecutionState from "../core/ExecutionState";
 
 export interface CachedAction {
-  cacheId: string;
   actionId: string;
-  steps: ActionStep[];
-  completedAt: Date;
-  successfulExecutions: number;
+  steps: CachedActionStep[];
 }
 
 export interface ActionCacheRepository {
   save(cachedAction: CachedAction): Promise<void>;
-  findByCacheId(cacheId: string): Promise<CachedAction | undefined>;
-  delete(id: string): Promise<void>;
+  findByActionId(cacheId: string): Promise<CachedAction | undefined>;
+  delete(actionId: string): Promise<void>;
   clear(): Promise<void>;
 }
 
 // localStorage implementation (current)
 class LocalStorageRepository implements ActionCacheRepository {
-  private readonly STORAGE_KEY = 'chant_action_cache';
+  private readonly STORAGE_KEY = "chant_action_cache";
 
   private getStoredActions(): CachedAction[] {
     try {
       const data = localStorage.getItem(this.STORAGE_KEY);
-      return data ? JSON.parse(data).map((item: any) => ({
-        ...item,
-        completedAt: new Date(item.completedAt)
-      })) : [];
+      return data
+        ? JSON.parse(data).map((item: any) => ({
+          ...item,
+          completedAt: new Date(item.completedAt),
+        }))
+        : [];
     } catch {
       return [];
     }
@@ -36,13 +45,15 @@ class LocalStorageRepository implements ActionCacheRepository {
     try {
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(actions));
     } catch (error) {
-      console.error('Failed to save to localStorage:', error);
+      console.error("Failed to save to localStorage:", error);
     }
   }
 
   async save(cachedAction: CachedAction): Promise<void> {
     const actions = this.getStoredActions();
-    const existingIndex = actions.findIndex(a => a.cacheId === cachedAction.cacheId);
+    const existingIndex = actions.findIndex(
+      (a) => a.actionId === cachedAction.actionId
+    );
 
     if (existingIndex >= 0) {
       actions[existingIndex] = cachedAction;
@@ -53,12 +64,14 @@ class LocalStorageRepository implements ActionCacheRepository {
     this.setStoredActions(actions);
   }
 
-  async findByCacheId(cacheId: string): Promise<CachedAction | undefined> {
-    return this.getStoredActions().find(a => a.cacheId === cacheId);
+  async findByActionId(actionId: string): Promise<CachedAction | undefined> {
+    return this.getStoredActions().find((a) => a.actionId === actionId);
   }
 
-  async delete(id: string): Promise<void> {
-    const actions = this.getStoredActions().filter(a => a.cacheId !== id);
+  async delete(actionId: string): Promise<void> {
+    const actions = this.getStoredActions().filter(
+      (a) => a.actionId !== actionId
+    );
     this.setStoredActions(actions);
   }
 
@@ -71,22 +84,22 @@ class LocalStorageRepository implements ActionCacheRepository {
 class DatabaseRepository implements ActionCacheRepository {
   async save(cachedAction: CachedAction): Promise<void> {
     // TODO: Implement database save
-    throw new Error('Database repository not implemented yet');
+    throw new Error("Database repository not implemented yet");
   }
 
-  async findByCacheId(cacheId: string): Promise<CachedAction | undefined> {
+  async findByActionId(cacheId: string): Promise<CachedAction | undefined> {
     // TODO: Implement database query
-    throw new Error('Database repository not implemented yet');
+    throw new Error("Database repository not implemented yet");
   }
 
   async delete(id: string): Promise<void> {
     // TODO: Implement database delete
-    throw new Error('Database repository not implemented yet');
+    throw new Error("Database repository not implemented yet");
   }
 
   async clear(): Promise<void> {
     // TODO: Implement database clear
-    throw new Error('Database repository not implemented yet');
+    throw new Error("Database repository not implemented yet");
   }
 }
 
@@ -94,41 +107,62 @@ export class ActionCacheService {
   private repository: ActionCacheRepository;
 
   constructor(useDatabase: boolean = false) {
-    this.repository = useDatabase ? new DatabaseRepository() : new LocalStorageRepository();
+    this.repository = useDatabase
+      ? new DatabaseRepository()
+      : new LocalStorageRepository();
   }
 
   async cacheSuccessfulAction(
     action: Action,
     actionElements: ActionElement[],
-    steps: ActionStep[]
+    executedSteps: ActionStep[]
   ): Promise<void> {
-    const cacheId = await getCacheId(action, actionElements);
-    const existing = await this.repository.findByCacheId(cacheId);
+    const actionHtmlElements = ExecutionState.getHtmlElementsByAction(
+      action.actionId
+    );
 
+    if (
+      !validateElementsForCaching(
+        action.actionId,
+        executedSteps,
+        actionElements,
+        actionHtmlElements
+      )
+    ) {
+      console.log("Skipping cahing for action", action.actionId);
+      return;
+    }
+
+    const cachedSteps: CachedActionStep[] = executedSteps.map((step) => {
+      const htmlElement = actionHtmlElements.find(
+        (el) => el.elementId === step.elementId
+      );
+      const element = actionElements.find((el) => el.id === step.elementId);
+
+      return {
+        type: step.type,
+        domElementId: htmlElement?.htmlElement.id!,
+        isVariable: element?.isVariable || false,
+        value: step.value
+      };
+    });
+
+    // Step 3: Create cached action
     const cachedAction: CachedAction = {
-      cacheId,
       actionId: action.actionId,
-      steps,
-      completedAt: new Date(),
-      successfulExecutions: 1
+      steps: cachedSteps,
     };
 
-    if (existing) {
-      existing.successfulExecutions++;
-      existing.completedAt = new Date();
-      await this.repository.save(existing);
-    } else {
-      await this.repository.save(cachedAction);
-    }
+    // Step 4: Save to storage
+    this.repository.save(cachedAction);
   }
 
-  async findCachedAction(action: Action, actionElements: ActionElement[] = []): Promise<CachedAction | undefined> {
-    const cacheId = await getCacheId(action, actionElements);
-    return await this.repository.findByCacheId(cacheId);
+  async findCachedAction(actionId: string): Promise<CachedAction | undefined> {
+    return await this.repository.findByActionId(actionId);
   }
 
-  async hasCachedAction(cacheId: string): Promise<boolean> {
-    const cached = await this.repository.findByCacheId(cacheId);
+  async hasCachedAction(actionId: string): Promise<boolean> {
+    const cached = await this.repository.findByActionId(actionId);
     return !!cached;
   }
 
@@ -136,30 +170,116 @@ export class ActionCacheService {
     await this.repository.clear();
   }
 
-  async removeCachedAction(id: string): Promise<void> {
-    await this.repository.delete(id);
+  async removeCachedAction(actionId: string): Promise<void> {
+    await this.repository.delete(actionId);
+  }
+
+  static async retrieveCachedAction(
+    actionId: string,
+    currentActionElements: ActionElement[],
+    transcript: string
+  ): Promise<ActionStep[] | null> {
+    const actionCacheService = new ActionCacheService();
+    const cachedAction = await actionCacheService.findCachedAction(actionId);
+
+    const resolvedSteps: ActionStep[] = [];
+    for (const step of cachedAction?.steps || []) {
+      if (step.isVariable) {
+        const variableElements = currentActionElements.filter(
+          (el) => el.isVariable
+        );
+        const searchItems: VariableElementSearchItem[] = variableElements.map(
+          (el) => ({
+            elementId: el.id,
+            searchableContent: buildSearchableContent(el),
+            element: el,
+          })
+        );
+
+        // Step 4: Initialize minisearch index
+        const miniSearch = new MiniSearch({
+          fields: ["searchableContent"],
+          storeFields: ["elementId", "element"],
+        });
+
+        miniSearch.addAll(searchItems);
+        const searchResults = miniSearch.search(transcript);
+
+        if (searchResults.length === 0) {
+          console.warn(
+            `[Cache Warning] No suitable match found for variable element in action '${actionId}'. Falling back to LLM.`
+          );
+          return null;
+        }
+
+        const bestMatch = searchResults[0];
+        resolvedSteps.push({
+          type: step.type,
+          elementId: bestMatch!.elementId,
+          value: bestMatch!.element.value,
+        });
+      } else {
+        resolvedSteps.push({
+          type: step.type,
+          domElementId: step.domElementId,
+          value: step.value,
+        });
+      }
+    }
+    return resolvedSteps;
   }
 }
 
-async function hashObject(obj: Record<string, any>) {
-  const stableString = stringify(obj);
-  const encoder = new TextEncoder();
-  const data = encoder.encode(stableString);
+function validateElementsForCaching(
+  actionId: string,
+  actionSteps: ActionStep[],
+  actionElements: ActionElement[],
+  actionHtlmElements: ActionHtmlElement[]
+): boolean {
+  const validHtmlElements = actionSteps
+    .map((step) =>
+      actionHtlmElements.find((el) => el.elementId === step.elementId)
+    )
+    .filter((el) => el !== undefined);
 
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  const nonVariableElements = validHtmlElements.filter((el) => {
+    const actionElement = actionElements.find((ae) => ae.id === el.elementId);
+    return !actionElement?.isVariable;
+  });
 
-  return hashHex;
-}
+  if (
+    nonVariableElements.some((el) => {
+      !el.htmlElement.id;
+    })
+  ) {
+    return false;
+  }
+  // Check 2: Non-variable elements must have unique IDs
+  const nonVariableElementIds = nonVariableElements.map(
+    (el) => el?.htmlElement.id
+  );
+  const uniqueActionElementIds = new Set(nonVariableElementIds);
 
-async function getCacheId(action: Action, actionElements: ActionElement[] = []) {
-  let cacheId = action.actionId;
-  if (action.cacheFunction) {
-    const result = await action.cacheFunction(action.actionId, actionElements);
-    const hash = await hashObject(result);
-    cacheId = action.actionId + '-' + hash;
+  if (nonVariableElementIds.length !== uniqueActionElementIds.size) {
+    console.warn(
+      `[Cache Warning] Duplicate IDs found in non-variable elements for action '${actionId}'. Falling back to LLM.`
+    );
+    return false;
   }
 
-  return cacheId;
+  return true;
+}
+
+function buildSearchableContent(element: ActionElement): string {
+  let content = element.label || "";
+
+  if (element.metadata) {
+    // Add metadata values to searchable content
+    const metadataValues = Object.values(element.metadata)
+      .filter((value) => typeof value === "string")
+      .join(" ");
+    content += " " + metadataValues;
+  }
+
+  return content.toLowerCase().trim();
 }

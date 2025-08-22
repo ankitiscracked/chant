@@ -9,11 +9,12 @@ export function useUserInfoDisplay() {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    const handleUserInfo = (event: CustomEvent<UserInfoDisplayEvent>) => {
-      const { userInfo, resultText, error, actionId } = event.detail;
+    const handleUserInfo = (event: Event) => {
+      const customEvent = event as CustomEvent<UserInfoDisplayEvent>;
+      const { userInfo, resultText, error, actionId } = customEvent.detail;
       // Only show UI if there's user info to display
       if (userInfo && userInfo.length > 0) {
-        setDisplayData(event.detail);
+        setDisplayData(customEvent.detail);
         setIsVisible(true);
       }
     };
