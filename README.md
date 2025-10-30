@@ -1,69 +1,135 @@
-# React + TypeScript + Vite
+# Chant
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Chant lets you drop a voice-enabled companion into any React web app. Speak a request, the SDK understands the page, plans out steps like navigate, click, set input value, wait, and then carries them out with DOM APIs. This repo holds the SDK itself plus a small demo app that shows the whole flow.
 
-Currently, two official plugins are available:
+## What's in this repo
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `packages/sdk` – the core voice engine published as `chant-sdk`
+- `packages/app` – a Vite + React demo that wires the SDK into a sample help desk + storefront
 
-## Expanding the ESLint configuration
+## How the SDK works
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- The `VoiceEngine` listens for speech, sends it to a language model, and keeps track of the current route and execution state.
+- Voice actions are described in everyday language through the `useVoiceAction` hook (or `useVoiceActions` if you want to register many at once).
+- DOM elements are linked to those actions with the `useVoiceElement` hook so the engine knows which button, field, or section to touch.
+- When a user speaks, the engine builds a plan made of simple steps (`navigate`, `click`, `setValue`, `wait`, and so on) and runs them through standard DOM APIs.
+- The `VoiceListener` component gives the user interface for recording, feedback, and status updates.
 
-```js
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Quick start
 
-      // Remove tseslint.configs.recommended and replace with this
-      ...tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      ...tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      ...tseslint.configs.stylisticTypeChecked,
+### 1. Install dependencies
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+bun install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+> Prefer npm or pnpm? They work too because this is a standard workspace, just replace `bun` with your package manager of choice.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 2. Add your Gemini API key
 
-export default tseslint.config([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+The SDK needs a Google Gemini API key to generate action plans.
+Create `packages/app/.env.local` (or reuse your own setup) and add:
+
 ```
+VITE_GEMINI_API_KEY=your_api_key_here
+```
+
+Use the same key wherever you create a `VoiceEngine` instance in your own project.
+
+### 3. Run the demo app
+
+```bash
+cd packages/app
+bun run dev
+```
+
+Open `http://localhost:5173` and log in with any email/password to explore the sample flows.
+
+### 4. Build or watch the SDK
+
+```bash
+cd packages/sdk
+bun run build       # one-off build
+bun run dev         # rebuild on change
+```
+
+## Registering a voice action
+
+Here is the minimum wiring you need in a React screen:
+
+```tsx
+import {
+  VoiceEngine,
+  VoiceEngineProvider,
+  VoiceListener,
+  useVoiceAction,
+  useVoiceElement,
+} from "chant-sdk";
+
+const voiceEngine = new VoiceEngine({
+  geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY,
+});
+
+function LoginForm() {
+  useVoiceAction({
+    actionId: "login",
+    voice_triggers: ["log in", "sign in"],
+    description: "Log in with email and password",
+    steps: [
+      "Fill the email field",
+      "Fill the password field",
+      "Press the log in button",
+    ],
+  });
+
+  const emailRef = useVoiceElement("login", {
+    selector: "#email",
+    label: "Email input",
+    type: "input",
+  });
+
+  const passwordRef = useVoiceElement("login", {
+    selector: "#password",
+    label: "Password input",
+    type: "input",
+  });
+
+  const submitRef = useVoiceElement("login", {
+    selector: "#login-button",
+    label: "Log in button",
+    type: "button",
+  });
+
+  return (
+    <form>
+      <input id="email" ref={emailRef} />
+      <input id="password" type="password" ref={passwordRef} />
+      <button id="login-button" ref={submitRef}>
+        Log in
+      </button>
+    </form>
+  );
+}
+
+export function App() {
+  return (
+    <VoiceEngineProvider voiceEngine={voiceEngine}>
+      <LoginForm />
+      <VoiceListener />
+    </VoiceEngineProvider>
+  );
+}
+```
+
+Once the action and elements are registered, the voice companion can fill the form and submit it on its own.
+
+## Demo app highlights
+
+- A login screen hooked up to the voice action above.
+- A product listing that demonstrates multi-step actions like add-to-cart and checkout.
+- A support ticket flow that shows off variable extraction and long-form text entry.
+- Helper actions that read out what you can do on the current page or across the whole app.
+
+## Need more detail?
+
+The SDK ships with an in-depth guide and API reference in `packages/sdk/README.md`. Check it out for advanced scenarios, troubleshooting tips, and deeper explanations of each hook and service.

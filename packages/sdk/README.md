@@ -1,405 +1,244 @@
-# Chant SDK 🎙️
+# Chant SDK
 
-**A React SDK for voice-controlled web automation that actually works**
+Chant adds a voice companion to any React web app. A user can ask for something, the SDK understands the page, plans out small steps like "click the checkout button" or "fill the email field", and runs them through the browser with plain DOM APIs.
 
-Transform any React app into a voice-controlled powerhouse. No more clicking through endless forms or hunting for buttons—just speak your intentions and watch the magic happen.
+This document explains the core ideas, shows the main hooks, and points you toward the demo app that lives in this monorepo.
 
-## Table of Contents
+## What lives in this package
+- `src/core` – `VoiceEngine`, `ActionDispatcher`, and event helpers
+- `src/hooks` – React hooks such as `useVoiceAction`, `useVoiceActions`, and `useVoiceElement`
+- `src/components` – ready-to-use UI like `<VoiceListener />`
+- `src/services` – helpers such as the action cache
+- `dist` – build output published to npm as `chant-sdk`
 
-- [What Makes This Special](#what-makes-this-special)
-- [Core Components](#core-components)
-- [Quick Start](#quick-start)
-- [Voice Actions](#voice-actions)
-- [Element Registration](#element-registration)
-- [Advanced Features](#advanced-features)
-- [API Reference](#api-reference)
-- [Examples](#examples)
-- [Troubleshooting](#troubleshooting)
+The project also ships with a companion app in `packages/app` that shows the SDK in action.
 
-## What Makes This Special
-
-Unlike other voice SDKs that just transcribe speech, Chant SDK understands **intent** and **context**. It uses Google's Gemini AI to:
-
-- **Intelligently match** voice commands to actions based on context
-- **Find the right elements** on your page using semantic understanding
-- **Handle complex workflows** with multi-step action execution
-- **Provide smart fallbacks** when things don't go as planned
-
-Think of it as having an AI assistant that actually knows how to use your app.
-
-## Core Components
-
-### 🎯 VoiceEngine
-The brains of the operation. Handles multimodal intent resolution, action generation, and execution orchestration.
-
-**Why it's awesome:** Uses audio analysis (not just transcription) to understand user intent with 70%+ confidence matching.
-
-### 🎭 ActionDispatcher  
-Your reliable execution companion. Manages action sequences, handles pausing/resuming, and deals with demo mode.
-
-**Why you need it:** Ensures actions execute in the right order and handles edge cases like missing elements or validation errors.
-
-### 🎤 VoiceListener
-The sleek UI component that users interact with. Provides visual feedback and handles all recording states.
-
-**Why it's polished:** Animated state transitions, contextual information display, and built-in error handling.
-
-### 🔗 Voice Hooks
-React hooks that make integration seamless:
-- `useVoiceElement` - Register any DOM element for voice control
-- `useVoiceActions` - Define and manage voice actions
-- `useVoiceState` - Access current voice system state
-
-## Quick Start
-
-### Installation
+## Install and build
+Chant expects React 16.8+ and TypeScript 5+.
 
 ```bash
-bun install chant-sdk
+# workspace root
+bun install
+
+# build the SDK once
+cd packages/sdk
+bun run build
+
+# rebuild on change
+bun run dev
 ```
 
-### Environment Setup
+You can swap `bun` with `npm`, `pnpm`, or `yarn` if you prefer another package manager.
 
-Add your Gemini API key to your environment:
-
-```bash
-# .env
-VITE_GEMINI_API_KEY=your_api_key_here
-```
-
-### Basic Integration
+## Voice engine basics
 
 ```tsx
-import { VoiceListener, useVoiceActions, useVoiceElement } from 'chant-sdk';
+import {
+  VoiceEngine,
+  VoiceEngineProvider,
+  VoiceListener,
+  useVoiceAction,
+  useVoiceElement,
+} from "chant-sdk";
 
-function LoginForm() {
-  // Define what voice commands can do
-  const loginAction = {
-    actionId: 'login',
-    voice_triggers: ['log in', 'sign in', 'authenticate'],
-    description: 'Login with credentials',
-    steps: ['Fill email', 'Fill password', 'Click login']
-  };
+const voiceEngine = new VoiceEngine({
+  geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY,
+});
 
-  useVoiceActions([loginAction]);
-
-  // Register elements for voice control
-  const emailRef = useVoiceElement('login', {
-    selector: '#email',
-    type: 'input',
-    label: 'Email field'
+function LoginScreen() {
+  useVoiceAction({
+    actionId: "login",
+    voice_triggers: ["log in", "sign in"],
+    description: "Log in with email and password",
+    steps: [
+      "Fill the email field",
+      "Fill the password field",
+      "Press the log in button",
+    ],
   });
 
-  const passwordRef = useVoiceElement('login', {
-    selector: '#password', 
-    type: 'input',
-    label: 'Password field'
+  const emailRef = useVoiceElement("login", {
+    selector: "#email",
+    label: "Email field",
+    type: "input",
   });
 
-  const submitRef = useVoiceElement('login', {
-    selector: '#login-btn',
-    type: 'button', 
-    label: 'Login button'
+  const passwordRef = useVoiceElement("login", {
+    selector: "#password",
+    label: "Password field",
+    type: "input",
+  });
+
+  const submitRef = useVoiceElement("login", {
+    selector: "#login-button",
+    label: "Log in button",
+    type: "button",
   });
 
   return (
-    <div>
-      <input ref={emailRef} id="email" type="email" />
-      <input ref={passwordRef} id="password" type="password" />
-      <button ref={submitRef} id="login-btn">Login</button>
-      
-      {/* Add the voice interface */}
+    <form>
+      <input id="email" ref={emailRef} />
+      <input id="password" type="password" ref={passwordRef} />
+      <button id="login-button" ref={submitRef}>
+        Log in
+      </button>
+    </form>
+  );
+}
+
+export function App() {
+  return (
+    <VoiceEngineProvider voiceEngine={voiceEngine}>
+      <LoginScreen />
       <VoiceListener />
-    </div>
+    </VoiceEngineProvider>
   );
 }
 ```
 
-That's it! Users can now say "log in" and the SDK will automatically fill the form and submit it.
+That is the smallest working setup:
+- `VoiceEngine` holds state, talks to the model, and carries out DOM actions.
+- `VoiceEngineProvider` places the engine in React context.
+- `useVoiceAction` (or `useVoiceActions`) registers an action with its voice triggers and optional route.
+- `useVoiceElement` links DOM nodes to the action so the engine knows where to click or type.
+- `VoiceListener` renders the microphone button, status, and feedback UI.
 
-## Voice Actions
+## How action planning works
+When a user speaks, the engine captures the audio, hands it to a Gemini model, and receives a plan. Each plan is a list of simple commands (`navigate`, `click`, `set_input_value`, `wait`, etc.). The engine then walks the plan, looks up the registered elements for the selected action, and interacts with the page using normal DOM calls. Execution state and voice state are published through events so hooks and UI can stay in sync.
 
-Voice actions are the heart of the SDK. They define what users can say and what should happen.
-
-### Basic Action Structure
+## Describing actions in plain English
+Chant leans on natural language to make actions easier to maintain.
 
 ```tsx
-const action = {
-  actionId: 'unique-id',
-  voice_triggers: ['add to cart', 'buy this', 'purchase'],
-  description: 'Add product to shopping cart',
-  steps: ['Find product', 'Click add to cart button'],
-  route: '/products' // Optional: restrict to specific routes
+const SUPPORT_TICKET_ACTION = {
+  actionId: "create-ticket",
+  voice_triggers: [
+    "create support ticket",
+    "open a new ticket",
+    "log an issue",
+  ],
+  description: "Open a new ticket and fill in the key details",
+  steps: [
+    "Click the create ticket button",
+    "Fill the ticket title",
+    "Fill the ticket description",
+    "Select the priority",
+    "Submit the ticket",
+  ],
+  route: "/tickets", // optional: only allow this on specific routes
 };
 ```
 
-### Smart Product Selection
+Register many actions at once with `useVoiceActions([SUPPORT_TICKET_ACTION, ...])`.
 
-The SDK can intelligently match voice commands to specific products:
+### Informational actions
+Actions without DOM steps can return information instead:
 
 ```tsx
-// Say "add wireless headphones to cart"
-// SDK automatically finds the right product button
-const productRef = useVoiceElement('add-to-cart', {
-  selector: `[data-product="${product.id}"]`,
-  type: 'button',
+const SHOW_HELP = {
+  actionId: "show-help",
+  voice_triggers: ["help", "what can I do"],
+  description: "List the available voice actions",
+  execFunction: () => ({
+    resultText: "Here are the voice commands you can try",
+    userInfo: ["Log in", "Add to cart", "Create ticket"],
+    error: "",
+  }),
+};
+```
+
+### Route-aware actions
+Provide a `route` string to make an action available only on certain screens. If you omit it, the action is treated as global.
+
+## Registering elements
+Each element registration links a real DOM node to an action. You can add metadata to help the model understand context.
+
+```tsx
+const productButtonRef = useVoiceElement("add-to-cart", {
+  selector: `[data-product-id="${product.id}"]`,
+  type: "button",
   label: `Add ${product.name} to cart`,
   metadata: {
-    productTitle: product.name,
-    productDescription: product.description
-  }
-});
-```
-
-### Informational Actions
-
-Create actions that provide information instead of clicking things:
-
-```tsx
-const helpAction = {
-  actionId: 'show-help',
-  voice_triggers: ['help', 'what can I do', 'show commands'],
-  description: 'Show available voice commands',
-  execFunction: () => ({
-    resultText: 'Here are the available commands',
-    userInfo: ['Login', 'Add to cart', 'Create ticket'],
-    error: ''
-  })
-};
-```
-
-## Element Registration
-
-### Basic Registration
-
-```tsx
-const buttonRef = useVoiceElement(actionId, {
-  selector: '#my-button',
-  type: 'button',
-  label: 'Submit form'
-});
-```
-
-### Advanced Registration with Metadata
-
-```tsx
-const productButtonRef = useVoiceElement('add-to-cart', {
-  selector: `[data-product="${product.id}"]`,
-  type: 'button', 
-  label: `Add ${product.title} to cart`,
-  metadata: {
-    productTitle: product.title,
+    productName: product.name,
     productDescription: product.description,
-    price: product.price
-  }
+    price: product.price,
+  },
 });
 ```
 
-### Demo Mode Support
+Attach the returned ref to the DOM node you render. When the component unmounts, the hook automatically unregisters the element.
 
-For elements that affect persistent state (like payments), provide demo handlers:
+### Optional demo handlers
+For sensitive actions (checkout, payments, destructive updates), set `affectsPersistentState: true` and add a `demoHandler`. When the user says "demo" or "test", the handler runs instead of the real DOM action so you can show a safe preview.
 
 ```tsx
-const checkoutRef = useVoiceElement('checkout', {
-  selector: '#checkout-btn',
-  type: 'button',
-  label: 'Checkout button',
+const checkoutRef = useVoiceElement("checkout", {
+  selector: "#checkout-btn",
+  type: "button",
+  label: "Checkout",
   affectsPersistentState: true,
   demoHandler: async () => {
-    // Show fake payment success instead of charging real money
-    showDemoPaymentSuccess();
-  }
-});
-```
-
-## Advanced Features
-
-### Route-Specific Actions
-
-Actions can be tied to specific app routes:
-
-```tsx
-const actions = [
-  {
-    actionId: 'login',
-    voice_triggers: ['log in'],
-    description: 'Login to account',
-    route: '/' // Only available on home page
+    await showDemoToast("Pretending to check out...");
   },
-  {
-    actionId: 'global-help',
-    voice_triggers: ['help'],
-    description: 'Show help',
-    // No route = available everywhere
-  }
-];
-```
-
-### Multi-Step Workflows
-
-The SDK handles complex workflows automatically:
-
-```tsx
-const ticketAction = {
-  actionId: 'create-ticket',
-  voice_triggers: ['create ticket', 'new support ticket'],
-  description: 'Create a support ticket',
-  steps: [
-    'Click create ticket button',
-    'Fill ticket title', 
-    'Fill description',
-    'Select priority',
-    'Submit ticket'
-  ]
-};
-```
-
-### State Management
-
-Access the current voice system state:
-
-```tsx
-import { useVoiceState } from 'chant-sdk';
-
-function MyComponent() {
-  const { executionState, voiceListenerState } = useVoiceState();
-  
-  if (executionState.status === 'executing') {
-    return <div>Voice command in progress...</div>;
-  }
-}
-```
-
-### Demo Mode
-
-Users can try actions without side effects by saying "demo" or "test":
-
-```tsx
-// User says: "demo the checkout process"
-// SDK executes in demo mode, calling demoHandler instead of real actions
-```
-
-## API Reference
-
-### Hooks
-
-#### `useVoiceActions(actions: Action[])`
-Register voice actions with the system.
-
-#### `useVoiceElement(actionId: string, config: ElementConfig)`
-Register a DOM element for voice control.
-
-#### `useVoiceState()`
-Access current voice system state.
-
-### Components
-
-#### `<VoiceListener />`
-The main voice interface component. Include once in your app.
-
-### Types
-
-```tsx
-interface Action {
-  actionId: string;
-  voice_triggers: string[];
-  description: string; 
-  steps?: string[];
-  route?: string;
-  execFunction?: () => ExecFunctionResult | Promise<ExecFunctionResult>;
-}
-
-interface ElementConfig {
-  selector: string;
-  type: string;
-  label: string;
-  metadata?: Record<string, any>;
-  affectsPersistentState?: boolean;
-  demoHandler?: () => void | Promise<void>;
-}
-```
-
-## Examples
-
-### E-commerce Store
-
-```tsx
-// Voice command: "add wireless headphones to cart"
-const productButtons = products.map(product => 
-  useVoiceElement('add-to-cart', {
-    selector: `[data-product="${product.id}"]`,
-    type: 'button',
-    label: `Add ${product.title} to cart`,
-    metadata: {
-      productTitle: product.title,
-      productDescription: product.description
-    }
-  })
-);
-```
-
-### Form Automation
-
-```tsx
-// Voice command: "create support ticket"
-const titleRef = useVoiceElement('create-ticket', {
-  selector: '#ticket-title',
-  type: 'input', 
-  label: 'Ticket title'
-});
-
-const descRef = useVoiceElement('create-ticket', {
-  selector: '#ticket-description',
-  type: 'textarea',
-  label: 'Ticket description'  
 });
 ```
 
-### Multi-Page Actions
+## Hooks at a glance
+- `useVoiceAction` / `useVoiceActions` – register one or many actions.
+- `useVoiceElement` – connect DOM nodes to an action.
+- `useVoiceState` – read execution status and listener status.
+- `useVoiceRecording`, `useVoiceActivityDetection`, `useAudioSession`, `useAudioProcessing` – lower-level hooks for audio control when you need customization.
+- `useUserInfoDisplay` and `useActionSuccessFlow` – helpers for presenting feedback to end users.
 
-```tsx
-const actions = [
-  {
-    actionId: 'dashboard-summary',
-    voice_triggers: ['show dashboard', 'summary'],
-    description: 'Navigate to dashboard',
-    route: '/dashboard'
-  },
-  {
-    actionId: 'help',
-    voice_triggers: ['help', 'what can I do'],
-    description: 'Show available commands'
-    // Available on all routes
-  }
-];
+## Components and services
+- `<VoiceListener />` – drop-in UI for recording, playing prompts, and showing status.
+- `VoiceEngineProvider` – context provider mentioned earlier.
+- `ActionCacheService` – caches recent actions to improve follow-up requests.
+- `EventBus` – singleton event dispatcher used internally and available if you need to listen to execution events outside React.
+
+## Working with the demo app
+Run the sample app in `packages/app` to see the SDK in context:
+
+```bash
+cd packages/app
+bun run dev
 ```
+
+Sign in with any email/password. The app shows three main flows:
+- login form automation
+- e-commerce add-to-cart and checkout
+- support ticket creation with long-form input
+
+Look at `packages/app/src/App.tsx` for real-world action definitions and element registrations.
+
+## Tips for reliable actions
+- Register actions and elements once per mount to avoid duplicates.
+- Use stable selectors (`data-*` attributes) when possible.
+- Provide friendly labels and useful metadata; the model uses them to pick the right element.
+- Keep voice triggers short and conversational.
+- If your app has routing, call `voiceEngine.setCurrentRoute(pathname)` whenever the location changes so route-specific actions behave as expected.
 
 ## Troubleshooting
+- **Voice commands are ignored** – confirm `VITE_GEMINI_API_KEY` is set and the key is valid.
+- **Elements cannot be found** – double-check selectors, and make sure the elements exist in the DOM when execution starts.
+- **Actions stop midway** – inspect the browser console; the engine logs missing elements and failed steps.
+- **Triggers feel too strict** – add more phrases or synonyms to `voice_triggers`, or add metadata that better describes the element.
 
-### Common Issues
+## Useful scripts
+```bash
+# format: from workspace root
+bun install
 
-**Voice commands not recognized?**
-- Check your `VITE_GEMINI_API_KEY` is set correctly
-- Ensure voice triggers match user's natural language
-- Verify actions are registered with `useVoiceActions`
+# SDK only
+cd packages/sdk
+bun run build     # build dist/ assets
+bun run dev       # watch mode
 
-**Elements not found?**  
-- Confirm selectors match actual DOM elements
-- Check if elements exist when voice action runs
-- Verify `ref` is properly attached to DOM elements
+# Publish steps (manual)
+# 1. run bun run build
+# 2. bump version in package.json
+# 3. publish with your preferred registry tooling
+```
 
-**Actions not executing?**
-- Check browser console for errors
-- Ensure elements are registered for the correct `actionId`
-- Verify route-specific actions match current URL
-
-### Performance Tips
-
-- Register actions once, not on every render
-- Use specific selectors to avoid element conflicts  
-- Implement demo handlers for persistent state actions
-- Test voice commands with various phrasings
-
----
-
-**Ready to give your users superpowers?** Install Chant SDK and transform boring clicks into magical voice commands. Your users will thank you (probably out loud). 🎉
+## Need more?
+Take a look at the source code inside `packages/sdk/src`. Each hook and core class is written in TypeScript with docs that explain intent. If you run into questions or discover a gap, open an issue or tweak the SDK—the code is meant to be easy to read and modify.
